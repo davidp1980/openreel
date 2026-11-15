@@ -32,8 +32,8 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
         applicationId = "com.shieldstream.tv"
         minSdk = 21
         targetSdk = 35
-        versionCode = 124
-        versionName = "1.0.24"
+        versionCode = 125
+        versionName = "1.0.25"
         manifestPlaceholders["appLabel"] = "@string/app_name"
 
         buildConfigField("String", "RD_TOKEN", "\"$rdToken\"")

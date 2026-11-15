@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.25] - 2026-11-15
+
+### Changed
+
+- **OpenReel continuation fork:** rebranded from Franklix (fork of `javiermolinar/franklix` / `grodri99/bambi`) to OpenReel while keeping `com.shieldstream.tv` compatibility.
+- **Self-update repository:** pointed release checks and `OpenReel.apk` updates to `davidp1980/openreel`.
+
 ## [1.0.24] - 2026-11-14
 
 ### Added
