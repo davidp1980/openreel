@@ -7,7 +7,7 @@ buildscript {
             add("classpath", "org.bouncycastle:bcpkix-jdk18on:1.85")
             add("classpath", "com.google.guava:guava:33.7.2-jre")
             add("classpath", "org.bitbucket.b_c:jose4j:0.9.6")
-            add("classpath", "com.squareup.okhttp3:okhttp:4.12.0")
+            add("classpath", "com.squareup.okhttp3:okhttp:5.5.1")
             add("classpath", "com.squareup.okio:okio:3.9.0")
             add("classpath", "org.jdom:jdom2:2.0.6.1")
             add("classpath", "org.apache.commons:commons-lang3:3.18.0")
