@@ -1633,7 +1633,7 @@ private fun AboutCard(onClick: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    if (testing) localizedStringResource(StringsR.string.settings_franklix_testing) else "Franklix",
+                    if (testing) localizedStringResource(StringsR.string.settings_franklix_testing) else "OpenReel",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                     color = Color.White,
                 )

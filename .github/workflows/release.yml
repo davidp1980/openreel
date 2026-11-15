@@ -72,12 +72,7 @@ jobs:
           : "${STORE_PASSWORD:?Missing RELEASE_STORE_PASSWORD}"
           : "${KEY_PASSWORD:?Missing RELEASE_KEY_PASSWORD}"
           : "${KEY_ALIAS:?Missing RELEASE_KEY_ALIAS}"
-          : "${TRAKT_ID:?Missing TRAKT_CLIENT_ID variable}"
-          : "${TRAKT_URI:?Missing TRAKT_REDIRECT_URI variable}"
-          : "${ITHIL_METADATA:?Missing ITHIL_METADATA_URL secret}"
-          : "${ITHIL_KEY:?Missing ITHIL_INDEX_KEY secret}"
-          : "${ITHIL_PREFIX:?Missing ITHIL_ARCHIVE_PREFIX secret}"
-          KEYSTORE="$RUNNER_TEMP/keystore/franklix.keystore"
+          KEYSTORE="$RUNNER_TEMP/keystore/openreel.keystore"
           mkdir -p "$(dirname "$KEYSTORE")"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE"
           {
@@ -87,11 +82,11 @@ jobs:
             printf 'releaseStorePassword=%s\n' "$STORE_PASSWORD"
             printf 'releaseKeyAlias=%s\n' "$KEY_ALIAS"
             printf 'releaseKeyPassword=%s\n' "$KEY_PASSWORD"
-            printf 'traktClientId=%s\n' "$TRAKT_ID"
-            printf 'traktRedirectUri=%s\n' "$TRAKT_URI"
-            printf 'ithilMetadataUrl=%s\n' "$ITHIL_METADATA"
-            printf 'ithilIndexKey=%s\n' "$ITHIL_KEY"
-            printf 'ithilArchivePrefix=%s\n' "$ITHIL_PREFIX"
+            if [ -n "$TRAKT_ID" ]; then printf 'traktClientId=%s\n' "$TRAKT_ID"; fi
+            if [ -n "$TRAKT_URI" ]; then printf 'traktRedirectUri=%s\n' "$TRAKT_URI"; fi
+            if [ -n "$ITHIL_METADATA" ]; then printf 'ithilMetadataUrl=%s\n' "$ITHIL_METADATA"; fi
+            if [ -n "$ITHIL_KEY" ]; then printf 'ithilIndexKey=%s\n' "$ITHIL_KEY"; fi
+            if [ -n "$ITHIL_PREFIX" ]; then printf 'ithilArchivePrefix=%s\n' "$ITHIL_PREFIX"; fi
           } > local.properties
           chmod 600 local.properties "$KEYSTORE"
 
@@ -104,11 +99,11 @@ jobs:
       - name: Run Android lint
         run: ./gradlew --no-daemon lintDebug
 
-      - name: Prepare Franklix.apk
+      - name: Prepare OpenReel.apk
         run: |
           mkdir -p "$RUNNER_TEMP/release-artifact"
-          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/release-artifact/Franklix.apk"
-          test -s "$RUNNER_TEMP/release-artifact/Franklix.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/release-artifact/OpenReel.apk"
+          test -s "$RUNNER_TEMP/release-artifact/OpenReel.apk"
 
       - name: Prepare curated release notes
         run: |
@@ -123,9 +118,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$RELEASE_TAG" "$RUNNER_TEMP/release-artifact/Franklix.apk" \
+          gh release create "$RELEASE_TAG" "$RUNNER_TEMP/release-artifact/OpenReel.apk" \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Franklix ${RELEASE_TAG#v}" \
+            --title "OpenReel ${RELEASE_TAG#v}" \
             --notes-file "$RUNNER_TEMP/release-notes.md" \
             --latest \
             --verify-tag

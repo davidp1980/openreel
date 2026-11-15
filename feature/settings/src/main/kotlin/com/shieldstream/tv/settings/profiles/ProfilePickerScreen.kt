@@ -112,9 +112,9 @@ fun ProfilePickerScreen(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.align(Alignment.TopStart).padding(start = 48.dp, top = 32.dp),
         ) {
-            Image(painterResource(R.drawable.franklix_logo), contentDescription = "Franklix", modifier = Modifier.size(40.dp))
+            Image(painterResource(R.drawable.franklix_logo), contentDescription = "OpenReel", modifier = Modifier.size(40.dp))
             Spacer(Modifier.width(12.dp))
-            Text("Franklix", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            Text("OpenReel", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
         }
 
         Column(

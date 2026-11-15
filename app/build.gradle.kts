@@ -70,7 +70,7 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-pruebas"
-            manifestPlaceholders["appLabel"] = "Franklix (pruebas)"
+            manifestPlaceholders["appLabel"] = "OpenReel (pruebas)"
         }
         release {
             isMinifyEnabled = false
@@ -84,7 +84,7 @@ configure<com.android.build.api.dsl.ApplicationExtension> {
             isDebuggable = false
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-benchmark"
-            manifestPlaceholders["appLabel"] = "Franklix (benchmark)"
+            manifestPlaceholders["appLabel"] = "OpenReel (benchmark)"
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += "release"
         }

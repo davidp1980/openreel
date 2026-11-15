@@ -223,7 +223,7 @@ private fun SetupHeader(step: SetupStep) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
         Image(painterResource(R.drawable.franklix_logo), contentDescription = null, modifier = Modifier.size(36.dp))
         Spacer(Modifier.width(10.dp))
-        Text("Franklix", fontFamily = DisplayFont, fontSize = 22.sp, color = Color.White)
+        Text("OpenReel", fontFamily = DisplayFont, fontSize = 22.sp, color = Color.White)
         Spacer(Modifier.weight(1f))
         step.number?.let { n ->
             Text(localizedStringResource(SR.setup_step_counter, n), fontFamily = DisplayFont, fontSize = 22.sp, color = Muted)
