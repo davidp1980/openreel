@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.28] - 2026-11-20
+
+### Improved
+
+- **Continuous Home vertical scrolling:** unified the Home billboard, category chips, and catalog rows into a single vertical scroll so moving down from the featured banner and categories transitions smoothly into the rows and compact header instead of jumping between separate views.
+
 ## [1.0.27] - 2026-11-20
 
 ### Changed
