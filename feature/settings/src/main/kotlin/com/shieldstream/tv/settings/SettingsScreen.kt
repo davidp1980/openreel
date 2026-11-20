@@ -1245,7 +1245,7 @@ private fun DeviceOptimizationCard(
                 )
                 Text(
                     if (optimization == DeviceOptimization.AUTOMATIC) {
-                        localizedStringResource(StringsR.string.settings_franklix_adapts_memory_buffering_thumbnails_and_sources)
+                        localizedStringResource(StringsR.string.settings_openreel_adapts_memory_buffering_thumbnails_and_sources)
                     } else {
                         localizedStringResource(StringsR.string.settings_uses_your_manual_settings_and_shield_compatible)
                     },
@@ -1523,8 +1523,8 @@ private fun ProviderCard(provider: SourceProvider, enabled: Boolean, onClick: ()
 private fun providerNote(p: SourceProvider): String = when (p) {
     SourceProvider.TORRENTIO -> localizedStringResource(StringsR.string.settings_the_main_finder_like_in_stremio)
     SourceProvider.PEERFLIX -> localizedStringResource(StringsR.string.settings_spanish_torrents_from_spanish_sites_dontorrent_mejortorrent)
-    SourceProvider.KNABEN -> localizedStringResource(StringsR.string.settings_franklix_s_own_finders_together_the_pirate)
-    SourceProvider.THEPIRATEBAY -> localizedStringResource(StringsR.string.settings_franklix_s_own_finders_together_the_pirate)
+    SourceProvider.KNABEN -> localizedStringResource(StringsR.string.settings_openreel_s_own_finders_together_the_pirate)
+    SourceProvider.THEPIRATEBAY -> localizedStringResource(StringsR.string.settings_openreel_s_own_finders_together_the_pirate)
     SourceProvider.NYAA -> localizedStringResource(StringsR.string.settings_own_anime_finder_cocoscrapers_real_debrid_only)
     SourceProvider.COMET -> localizedStringResource(StringsR.string.settings_comet_with_your_real_debrid_token_sent)
     SourceProvider.AIOSTREAMS -> localizedStringResource(StringsR.string.settings_any_stremio_addon_aiostreams_comet_mediafusion_paste)
@@ -1633,7 +1633,7 @@ private fun AboutCard(onClick: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    if (testing) localizedStringResource(StringsR.string.settings_franklix_testing) else "OpenReel",
+                    if (testing) localizedStringResource(StringsR.string.settings_openreel_testing) else "OpenReel",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
                     color = Color.White,
                 )

@@ -221,7 +221,7 @@ private fun debridSteps(debrid: DebridService): List<String> = when (debrid) {
 @Composable
 private fun SetupHeader(step: SetupStep) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Image(painterResource(R.drawable.franklix_logo), contentDescription = null, modifier = Modifier.size(36.dp))
+        Image(painterResource(R.drawable.openreel_logo), contentDescription = null, modifier = Modifier.size(36.dp))
         Spacer(Modifier.width(10.dp))
         Text("OpenReel", fontFamily = DisplayFont, fontSize = 22.sp, color = Color.White)
         Spacer(Modifier.weight(1f))
@@ -257,7 +257,7 @@ private fun ColumnScope.WelcomeStep(onStart: () -> Unit, onLater: () -> Unit, on
         verticalArrangement = Arrangement.Center,
         modifier = Modifier.fillMaxWidth().weight(1f),
     ) {
-        Image(painterResource(R.drawable.franklix_logo), contentDescription = null, modifier = Modifier.size(120.dp))
+        Image(painterResource(R.drawable.openreel_logo), contentDescription = null, modifier = Modifier.size(120.dp))
         Spacer(Modifier.height(16.dp))
         Text(localizedStringResource(SR.setup_welcome_title), fontFamily = DisplayFont, fontSize = 44.sp, color = Color.White)
         Text(

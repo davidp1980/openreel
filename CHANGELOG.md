@@ -4,7 +4,7 @@
 
 ### Changed
 
-- **OpenReel continuation fork:** rebranded from Franklix (fork of `javiermolinar/franklix` / `grodri99/bambi`) to OpenReel while keeping `com.shieldstream.tv` compatibility.
+- **OpenReel branding:** updated app name, artwork, and configuration to OpenReel while keeping `com.shieldstream.tv` compatibility.
 - **Self-update repository:** pointed release checks and `OpenReel.apk` updates to `davidp1980/openreel`.
 
 ## [1.0.24] - 2026-11-14
@@ -136,12 +136,12 @@
 
 ### Added
 
-- **Android TV integration:** publish resumable movies and episodes to Play Next and a dedicated Franklix Continue Watching channel, with profile-aware resume links and high-resolution landscape artwork.
+- **Android TV integration:** publish resumable movies and episodes to Play Next and a dedicated OpenReel Continue Watching channel, with profile-aware resume links and high-resolution landscape artwork.
 - **Source exclusions:** filter sources by quality, video features, and advertised audio codecs. Use Show all in the source list for a temporary override.
 
 ### Improved
 
-- Use the current Franklix logo on profile, setup, and phone-configuration screens.
+- Use the current OpenReel logo on profile, setup, and phone-configuration screens.
 - Remove the redundant centered buffering indicator during playback.
 
 ## [1.0.15] - 2026-11-07
@@ -153,7 +153,7 @@
 
 ### Improved
 
-- **Franklix artwork:** new minimalist launcher icon and Android TV banner.
+- **App artwork:** new minimalist launcher icon and Android TV banner.
 - **Profile avatars:** muted two-color gradients inspired by forest, sea, and other natural tones.
 - **Visual consistency:** refined typography, icons, badges, cards, and surfaces across Home, Details, playback, setup, and Settings.
 - **Home artwork:** centralized backdrop selection and added focused regression coverage.
@@ -182,7 +182,7 @@
 
 ### Added
 
-- **Franklix rebrand:** new name and artwork throughout the app, Android TV launcher, setup, README, and release packages. Existing installations keep their application ID, profiles, preferences, and stored keys.
+- **App branding:** updated name and artwork throughout the app, Android TV launcher, setup, README, and release packages. Existing installations keep their application ID, profiles, preferences, and stored keys.
 - **AllDebrid QR sign-in:** authorize AllDebrid from setup or Settings and save the returned API key automatically. Manual API-key entry remains available.
 - **Guided phone setup:** complete first-run configuration in four steps—TMDB, debrid, optional SubDL, and language/audio/subtitles—with required-key validation and a final confirmation.
 - **Phone configuration editor:** later, use Settings to edit service keys, source finders, and playback preferences from a phone or computer on the same local network. Sessions expire after 10 minutes and existing secrets stay hidden.
@@ -190,7 +190,7 @@
 ### Improved
 
 - Use AllDebrid as the default debrid service for new installations.
-- Updated release artifacts and self-update checks for the Franklix repository and `Franklix.apk` package.
+- Updated release artifacts and self-update checks for the OpenReel repository and `OpenReel.apk` package.
 
 ### Fixed
 

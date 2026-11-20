@@ -59,7 +59,7 @@ val LocalSoftBackdrops = staticCompositionLocalOf { true }
 val LocalHighResBackdrops = staticCompositionLocalOf { false }
 
 @Composable
-fun FranklixTheme(
+fun OpenReelTheme(
     content: @Composable () -> Unit,
 ) {
     MaterialTheme(

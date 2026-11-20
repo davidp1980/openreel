@@ -40,7 +40,7 @@ object ProfilePin {
     const val LENGTH = 4
 
     fun hash(profileId: String, pin: String): String {
-        val bytes = java.security.MessageDigest.getInstance("SHA-256").digest("bambi-pin:$profileId:$pin".toByteArray())
+        val bytes = java.security.MessageDigest.getInstance("SHA-256").digest("openreel-pin:$profileId:$pin".toByteArray())
         return bytes.joinToString("") { "%02x".format(it) }
     }
 

@@ -20,7 +20,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "franklix"
+rootProject.name = "openreel"
 
 include(":app")
 include(":core:model")
