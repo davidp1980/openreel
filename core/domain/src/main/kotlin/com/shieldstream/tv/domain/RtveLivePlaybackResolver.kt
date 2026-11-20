@@ -26,10 +26,9 @@ class RtveLivePlaybackResolver(
         }
         val directUrls = channel.directUrls.filter { it.isNotBlank() }
         if (directUrls.isNotEmpty()) {
-            val displayTitle = listOfNotNull(
-                channel.category?.takeIf { it.isNotBlank() },
-                channel.title.takeIf { it.isNotBlank() },
-            ).distinct().joinToString(" · ").ifBlank { channel.id }
+            val displayTitle = channel.title.ifBlank {
+                channel.category?.takeIf { it.isNotBlank() } ?: channel.id
+            }
             val sources = directUrls.mapIndexed { index, url ->
                 val cleanPath = url.substringBefore('?').substringBefore('#')
                 val mimeType = if (cleanPath.endsWith(".mpd", ignoreCase = true)) MIME_DASH else MIME_HLS
