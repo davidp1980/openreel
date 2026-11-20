@@ -1,9 +1,9 @@
 
 # OpenReel
 
-OpenReel is a continuation fork of the deleted `javiermolinar/franklix` repository (which was itself a fork of https://github.com/grodri99/bambi).
+OpenReel is an Android TV streaming client using TMDB for catalog metadata, Trakt for synchronization, and user-configured debrid and source providers for playback.
 
-**This app is under heavy development. It can breaks!**
+**This app is under heavy development. It can break!**
 
 ## Disclaimer
 
@@ -19,13 +19,13 @@ Artwork is blurred in these screenshots.
 
 | Home | Home rows |
 | --- | --- |
-| ![Home billboard](docs/screenshots/franklix-home.jpg) | ![Home rows](docs/screenshots/franklix-rows.jpg) |
+| ![Home billboard](docs/screenshots/openreel-home.jpg) | ![Home rows](docs/screenshots/openreel-rows.jpg) |
 | **Details** | **My List** |
-| ![Details](docs/screenshots/franklix-details.jpg) | ![My List](docs/screenshots/franklix-my-list.jpg) |
+| ![Details](docs/screenshots/openreel-details.jpg) | ![My List](docs/screenshots/openreel-my-list.jpg) |
 | **Search** | |
-| ![Search](docs/screenshots/franklix-search.jpg) | |
+| ![Search](docs/screenshots/openreel-search.jpg) | |
 
-## Improvements over Bambi 1.0.6
+## Features
 
 **Playback and sources**
 
@@ -36,7 +36,7 @@ Artwork is blurred in these screenshots.
 
 **Home and discovery**
 
-- Side navigation rail, a new monochrome look and Franklix branding.
+- Side navigation rail, a monochrome look and OpenReel branding.
 - New Home rows: Up Next, Trakt recommendations, Top 10 and unlimited Continue Watching.
 - Episode center with optional new-episode notifications.
 - Cast and actor pages.

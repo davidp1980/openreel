@@ -82,7 +82,7 @@ fun PhoneConfigScreen(
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Image(
-                        painter = painterResource(R.drawable.franklix_logo),
+                        painter = painterResource(R.drawable.openreel_logo),
                         contentDescription = null,
                         modifier = Modifier.size(56.dp),
                     )

@@ -1,8 +1,8 @@
-# Bambi / ShieldStream agent guide
+# OpenReel / ShieldStream agent guide
 
 ## Project overview
 
-Bambi is an Android TV streaming client written in Kotlin with Jetpack Compose, Hilt, Retrofit, AndroidX Media3, and Coil. It uses TMDB for catalog metadata, Trakt for synchronization, and user-configured debrid/source providers for playback. The app supports multiple local profiles, per-profile watch state and preferences, external subtitles, and episode release tracking.
+OpenReel is an Android TV streaming client written in Kotlin with Jetpack Compose, Hilt, Retrofit, AndroidX Media3, and Coil. It uses TMDB for catalog metadata, Trakt for synchronization, and user-configured debrid/source providers for playback. The app supports multiple local profiles, per-profile watch state and preferences, external subtitles, and episode release tracking.
 
 - Stable application ID: `com.shieldstream.tv`.
 - Debug application ID: `com.shieldstream.tv.debug`; it is a separate installation with separate data.
