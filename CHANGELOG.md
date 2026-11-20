@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.29] - 2026-11-20
+
+### Added
+
+- **Live TV (RTVE):** added a dedicated Live TV tab in the navigation rail with RTVE's live channels, active live events, and 24/7 thematic channels, loaded lazily when the tab is opened and hidden on Kids profiles.
+- **Live playback & Widevine DRM:** added Media3 HLS, DASH, and on-demand Widevine DRM support with automatic non-DRM fallback, live-edge joining, DVR seek controls with jump-to-live (`▲`), and original-version / audio-description track labels.
+
+### Improved
+
+- **Navigation rail layout:** tightened vertical rail spacing and item height so all tabs, profile switcher, and Settings fit comfortably on 1080p TV screens.
+
 ## [1.0.28] - 2026-11-20
 
 ### Improved
