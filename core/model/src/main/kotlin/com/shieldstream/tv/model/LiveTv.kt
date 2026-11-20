@@ -2,7 +2,7 @@ package com.shieldstream.tv.model
 
 data class LiveChannel(
     val id: String,
-    val assetId: String?,
+    val assetId: String? = null,
     val title: String,
     val category: String? = null,
     val imageUrl: String? = null,
