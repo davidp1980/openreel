@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.35] - 2026-11-20
+
+### Changed
+
+- **Curated Live TV TDT lineup:** narrowed the free-to-air TDT directory to three concise categories — **Nacionales** (up to 12), **Madrid** (up to 6), and **Internacionales** (up to 8 major channels) — keeping the entire Live TV lineup under 40 channels alongside RTVE.
+
 ## [1.0.34] - 2026-11-20
 
 ### Added

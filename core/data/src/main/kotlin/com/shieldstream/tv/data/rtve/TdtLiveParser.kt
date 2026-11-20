@@ -90,8 +90,9 @@ class TdtHttpClient @Inject constructor(
 
 /**
  * Tolerant parser for the public TDT free-to-air directory (`tv.json`).
- * Keeps only direct official HLS (`m3u8`) and DASH (`mpd`) streams and skips RTVE channels that
- * are already served with live EPG + Widevine DRM by [RtveLiveParser].
+ * Keeps a curated subset (national Spain, Madrid, and major international channels, capped to keep
+ * the Live TV lineup concise) with direct official HLS (`m3u8`) and DASH (`mpd`) streams, skipping
+ * RTVE channels that are already served with live EPG + Widevine DRM by [RtveLiveParser].
  */
 class TdtLiveParser(
     private val json: Json = Json { ignoreUnknownKeys = true },
@@ -102,35 +103,69 @@ class TdtLiveParser(
             .orEmpty()
             .mapNotNull { it as? JsonObject }
 
-        val sections = mutableListOf<LiveTvSection>()
+        val national = mutableListOf<LiveChannel>()
+        val madrid = mutableListOf<LiveChannel>()
+        val international = mutableListOf<LiveChannel>()
+
         for (country in countries) {
+            val countryName = country.text("name")?.lowercase(Locale.ROOT).orEmpty()
             val ambits = country.array("ambits")
                 .orEmpty()
                 .mapNotNull { it as? JsonObject }
             for (ambit in ambits) {
                 val ambitName = ambit.text("name") ?: continue
-                val ambitSlug = slug(ambitName)
+                val ambitLower = ambitName.lowercase(Locale.ROOT)
+                val bucket = when {
+                    countryName == COUNTRY_SPAIN && ambitLower in SPAIN_NATIONAL_AMBITS -> Bucket.NATIONAL
+                    countryName == COUNTRY_SPAIN && ambitLower.contains("madrid") -> Bucket.MADRID
+                    countryName == COUNTRY_INTERNATIONAL -> Bucket.INTERNATIONAL
+                    else -> continue
+                }
                 val channels = ambit.array("channels")
                     .orEmpty()
                     .mapNotNull { it as? JsonObject }
-                    .mapNotNull { toLiveChannel(it, ambitName, ambitSlug) }
-                    .distinctBy(LiveChannel::id)
-                if (channels.isNotEmpty()) {
-                    sections += LiveTvSection(
-                        id = "tdt_$ambitSlug",
-                        title = ambitName,
-                        channels = channels,
-                    )
+                for (channelObj in channels) {
+                    val channel = toLiveChannel(channelObj, bucket) ?: continue
+                    when (bucket) {
+                        Bucket.NATIONAL -> national += channel
+                        Bucket.MADRID -> madrid += channel
+                        Bucket.INTERNATIONAL -> international += channel
+                    }
                 }
             }
         }
-        return sections.distinctBy(LiveTvSection::id)
+
+        val curatedNational = national
+            .distinctBy { it.title.lowercase(Locale.ROOT) }
+            .sortedBy { priorityIndex(it.title, NATIONAL_PRIORITY) }
+            .take(MAX_NATIONAL_CHANNELS)
+
+        val curatedMadrid = madrid
+            .distinctBy { it.title.lowercase(Locale.ROOT) }
+            .take(MAX_MADRID_CHANNELS)
+
+        val curatedInternational = international
+            .distinctBy { it.title.lowercase(Locale.ROOT) }
+            .filter { priorityIndex(it.title, INTERNATIONAL_ALLOWLIST) < INTERNATIONAL_ALLOWLIST.size }
+            .sortedBy { priorityIndex(it.title, INTERNATIONAL_ALLOWLIST) }
+            .take(MAX_INTERNATIONAL_CHANNELS)
+
+        return buildList {
+            if (curatedNational.isNotEmpty()) {
+                add(LiveTvSection(id = "tdt_nacionales", title = TITLE_NATIONAL, channels = curatedNational))
+            }
+            if (curatedMadrid.isNotEmpty()) {
+                add(LiveTvSection(id = "tdt_madrid", title = TITLE_MADRID, channels = curatedMadrid))
+            }
+            if (curatedInternational.isNotEmpty()) {
+                add(LiveTvSection(id = "tdt_internacionales", title = TITLE_INTERNATIONAL, channels = curatedInternational))
+            }
+        }
     }
 
     private fun toLiveChannel(
         channel: JsonObject,
-        ambitName: String,
-        ambitSlug: String,
+        bucket: Bucket,
     ): LiveChannel? {
         val name = channel.text("name") ?: return null
         if (isRtveNativeChannel(name)) return null
@@ -148,16 +183,28 @@ class TdtLiveParser(
 
         val logoUrl = channel.text("logo")?.let(::sanitizeLogoUrl)
         return LiveChannel(
-            id = "tdt_${ambitSlug}_${slug(name)}",
+            id = "tdt_${bucket.slug}_${slug(name)}",
             assetId = null,
             title = name,
-            category = ambitName,
+            category = bucket.title,
             imageUrl = null,
             logoUrl = logoUrl,
             isOnAir = true,
             directUrls = directUrls,
             provider = PROVIDER_TDT,
         )
+    }
+
+    private fun priorityIndex(name: String, list: List<String>): Int {
+        val normalized = name.trim().lowercase(Locale.ROOT)
+        val idx = list.indexOf(normalized)
+        return if (idx >= 0) idx else list.size
+    }
+
+    private enum class Bucket(val slug: String, val title: String) {
+        NATIONAL("nacionales", TITLE_NATIONAL),
+        MADRID("madrid", TITLE_MADRID),
+        INTERNATIONAL("internacionales", TITLE_INTERNATIONAL),
     }
 
     internal fun sanitizeStreamUrl(raw: String): String? {
@@ -208,7 +255,52 @@ class TdtLiveParser(
 
     private companion object {
         const val PROVIDER_TDT = "TDT"
+        const val COUNTRY_SPAIN = "spain"
+        const val COUNTRY_INTERNATIONAL = "international"
+        const val TITLE_NATIONAL = "Nacionales"
+        const val TITLE_MADRID = "Madrid"
+        const val TITLE_INTERNATIONAL = "Internacionales"
+        const val MAX_NATIONAL_CHANNELS = 12
+        const val MAX_MADRID_CHANNELS = 6
+        const val MAX_INTERNATIONAL_CHANNELS = 8
         val SUPPORTED_FORMATS = setOf("m3u8", "mpd")
+        val SPAIN_NATIONAL_AMBITS = setOf(
+            "generalistas",
+            "informativos",
+            "deportivos",
+            "infantiles",
+            "eventuales",
+        )
+        val NATIONAL_PRIORITY = listOf(
+            "clan",
+            "trece",
+            "euronews",
+            "real madrid tv",
+            "el toro tv",
+            "negocios tv",
+            "el país",
+            "el confidencial",
+            "¡hola! play",
+            "canal parlamento",
+            "top barça",
+            "congreso de los diputados",
+            "senado",
+            "rne accesible",
+        )
+        val INTERNATIONAL_ALLOWLIST = listOf(
+            "cnn internacional",
+            "bloomberg europe",
+            "sky news reino unido",
+            "dw alemania",
+            "bfm tv francia",
+            "tv5monde francia",
+            "al jazeera catar",
+            "nhk world japón",
+            "cbs news usa",
+            "red bull tv",
+            "abc news australia",
+            "trt world turquía",
+        )
         val RTVE_NATIVE_NAMES = setOf(
             "la 1",
             "la 2",

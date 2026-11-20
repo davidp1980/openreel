@@ -9,7 +9,7 @@ class TdtLiveParserTest {
     private val parser = TdtLiveParser()
 
     @Test
-    fun `parses free-to-air channels, filters non-direct options, sanitizes urls, and skips native rtve duplicates`() {
+    fun `keeps only curated national, madrid and major international channels with direct streams`() {
         val raw = """
             {
               "countries": [
@@ -34,12 +34,12 @@ class TdtLiveParserTest {
                           ]
                         },
                         {
-                          "name": "Antena 3",
-                          "logo": "http://img.example.com/a3.png",
+                          "name": "TRECE",
+                          "logo": "http://img.example.com/trece.png",
                           "options": [
-                            {"format": "stream", "url": "https://www.atresplayer.com/directos/antena3/"},
-                            {"format": "m3u8", "url": "https://live.example.com/a3/master.m3u8"},
-                            {"format": "mpd", "url": "https://live.example.com/a3/manifest.mpd"}
+                            {"format": "stream", "url": "https://www.trecetv.es/directo"},
+                            {"format": "m3u8", "url": "https://live.example.com/trece/master.m3u8"},
+                            {"format": "mpd", "url": "https://live.example.com/trece/manifest.mpd"}
                           ]
                         }
                       ]
@@ -51,15 +51,56 @@ class TdtLiveParserTest {
                           "name": "Clan",
                           "logo": "https://img.example.com/clan.png",
                           "options": [
-                            {"format": "m3u8", "url": "https://rtvehlslive.rtve.es/clan.m3u8"}
+                            {"format": "m3u8", "url": "https://rtvehlslive.rtve.es/clan.m3u8?cb=[CACHEBUSTER]&did=[DEVICE_ID]"},
+                            {"format": "youtube", "url": "https://www.youtube.com/embed/live"}
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "C. de Madrid",
+                      "channels": [
+                        {
+                          "name": "Canal 33 Madrid",
+                          "logo": "https://img.example.com/c33.png",
+                          "options": [
+                            {"format": "m3u8", "url": "https://live.example.com/c33.m3u8"}
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "name": "Andalucía",
+                      "channels": [
+                        {
+                          "name": "Canal Sur",
+                          "logo": "https://img.example.com/canalsur.png",
+                          "options": [
+                            {"format": "m3u8", "url": "https://live.example.com/canalsur.m3u8"}
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "name": "International",
+                  "ambits": [
+                    {
+                      "name": "Int. Europa",
+                      "channels": [
+                        {
+                          "name": "CNN Internacional",
+                          "logo": "https://img.example.com/cnn.png",
+                          "options": [
+                            {"format": "m3u8", "url": "https://live.example.com/cnn.m3u8"}
                           ]
                         },
                         {
-                          "name": "Runtime Kids",
-                          "logo": "https://img.example.com/runtime.png",
+                          "name": "Obscure Local TV",
+                          "logo": "https://img.example.com/obscure.png",
                           "options": [
-                            {"format": "m3u8", "url": "https://stream.runtime.tv/kids.m3u8?cb=[CACHEBUSTER]&did=[DEVICE_ID]"},
-                            {"format": "youtube", "url": "https://www.youtube.com/embed/live"}
+                            {"format": "m3u8", "url": "https://live.example.com/obscure.m3u8"}
                           ]
                         }
                       ]
@@ -72,28 +113,25 @@ class TdtLiveParserTest {
 
         val sections = parser.parseSections(raw)
 
-        assertEquals(2, sections.size)
-        assertEquals("Generalistas", sections[0].title)
-        assertEquals(1, sections[0].channels.size)
+        assertEquals(listOf("Nacionales", "Madrid", "Internacionales"), sections.map { it.title })
 
-        val antena3 = sections[0].channels.single()
-        assertEquals("Antena 3", antena3.title)
-        assertEquals("https://img.example.com/a3.png", antena3.logoUrl)
-        assertEquals("TDT", antena3.provider)
+        val national = sections[0].channels
+        assertEquals(listOf("Clan", "TRECE"), national.map { it.title })
+        assertTrue(national[0].directUrls.single().none { it == '[' || it == ']' })
+        assertEquals("https://rtvehlslive.rtve.es/clan.m3u8?cb=0&did=", national[0].directUrls.single())
+
+        val trece = national[1]
+        assertEquals("https://img.example.com/trece.png", trece.logoUrl)
+        assertEquals("TDT", trece.provider)
         assertEquals(
             listOf(
-                "https://live.example.com/a3/master.m3u8",
-                "https://live.example.com/a3/manifest.mpd",
+                "https://live.example.com/trece/master.m3u8",
+                "https://live.example.com/trece/manifest.mpd",
             ),
-            antena3.directUrls,
+            trece.directUrls,
         )
 
-        assertEquals("Infantiles", sections[1].title)
-        assertEquals(2, sections[1].channels.size)
-        assertEquals("Clan", sections[1].channels[0].title)
-        val runtime = sections[1].channels[1]
-        assertEquals("Runtime Kids", runtime.title)
-        assertTrue(runtime.directUrls.single().none { it == '[' || it == ']' })
-        assertEquals("https://stream.runtime.tv/kids.m3u8?cb=0&did=", runtime.directUrls.single())
+        assertEquals(listOf("Canal 33 Madrid"), sections[1].channels.map { it.title })
+        assertEquals(listOf("CNN Internacional"), sections[2].channels.map { it.title })
     }
 }
