@@ -43,9 +43,7 @@ import com.shieldstream.tv.model.SubtitlePreference
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -587,16 +585,22 @@ class PlayerViewModel @Inject constructor(
                     return
                 }
             } else {
-                licenseUrl = withContext(Dispatchers.IO) {
-                    try {
-                        liveDrmProvider.widevineLicenseUrl(drmTokenUrl)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        null
-                    }
+                licenseUrl = try {
+                    liveDrmProvider.widevineLicenseUrl(drmTokenUrl)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    null
                 }
                 if (!playbackVisible || generation != playerGeneration) return
+                if (licenseUrl == null) {
+                    val fallback = sourceFailover.onSourceOpenError("DRM_TOKEN_UNAVAILABLE", allowAfterPlayed = true)
+                    if (fallback != null) {
+                        resolvedUrl = null
+                        playFrom(fallback.index)
+                        return
+                    }
+                }
             }
         }
         earlyFrameRate = if (matchContentFrameRate && !isLive) frameRateProbe.probe(url) else null

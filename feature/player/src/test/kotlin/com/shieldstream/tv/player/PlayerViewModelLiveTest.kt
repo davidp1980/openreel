@@ -9,6 +9,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackGroup
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
+import androidx.lifecycle.viewModelScope
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import com.shieldstream.tv.domain.CatalogCacheRefresher
@@ -38,6 +39,7 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
@@ -88,6 +90,7 @@ class PlayerViewModelLiveTest {
 
         players.listener(0).onIsPlayingChanged(true)
         fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
 
         verify(exactly = 0) { fixture.watchProgress.save(any(), any(), any(), any()) }
         verify(exactly = 0) { fixture.trakt.scrobble(any(), any(), any()) }
@@ -112,6 +115,7 @@ class PlayerViewModelLiveTest {
         assertEquals("https://ztnr.rtve.es/ztnr/tv/999.mpd", item.localConfiguration?.uri.toString())
         assertNull(item.localConfiguration?.drmConfiguration)
         fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
     }
 
     @Test
@@ -138,6 +142,7 @@ class PlayerViewModelLiveTest {
             players.singleArgItems[1].localConfiguration?.uri.toString(),
         )
         fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
     }
 
     @Test
@@ -159,6 +164,7 @@ class PlayerViewModelLiveTest {
         verify(exactly = 1) { player.seekToDefaultPosition() }
         verify(atLeast = 2) { player.prepare() }
         fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
     }
 
     private fun liveFixture(
