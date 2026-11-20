@@ -10,6 +10,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.lifecycle.viewModelScope
 import com.shieldstream.tv.domain.CatalogCacheRefresher
+import com.shieldstream.tv.domain.LiveDrmLicenseProvider
 import com.shieldstream.tv.domain.ProfileRepository
 import com.shieldstream.tv.domain.ResolveState
 import com.shieldstream.tv.domain.ResolveStreamUseCase
@@ -295,6 +296,7 @@ class PlayerViewModelTest {
                 subtitles = mockk<SubtitleRepository>(relaxed = true),
                 trakt = mockk<TraktRepository>(relaxed = true),
                 skipSegmentsRepository = mockk<SkipSegmentsRepository>(relaxed = true),
+                liveDrmProvider = LiveDrmLicenseProvider { null },
                 texts = mockk<Texts>(relaxed = true),
                 catalogCache = mockk<CatalogCacheRefresher>(relaxed = true),
             ),

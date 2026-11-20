@@ -96,6 +96,7 @@ class SharedComponentsLocaleTest {
         composeRule.onNodeWithContentDescription("Inicio").assertExists()
         composeRule.onNodeWithContentDescription("Episodios").assertExists()
         composeRule.onNodeWithContentDescription("Series").assertExists()
+        composeRule.onNodeWithContentDescription("Directo").assertExists()
         composeRule.onNodeWithContentDescription("Mi lista").assertExists()
         composeRule.onNodeWithContentDescription("Ajustes").assertExists()
     }
@@ -108,6 +109,7 @@ class SharedComponentsLocaleTest {
         composeRule.onNodeWithContentDescription("Home").assertExists()
         composeRule.onNodeWithContentDescription("Episodes").assertExists()
         composeRule.onNodeWithContentDescription("TV Shows").assertExists()
+        composeRule.onNodeWithContentDescription("Live TV").assertExists()
         composeRule.onNodeWithContentDescription("My list").assertExists()
         composeRule.onNodeWithContentDescription("Settings").assertExists()
     }

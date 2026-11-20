@@ -9,11 +9,15 @@ import org.junit.Test
 class MainScreenBackTest {
 
     @Test
-    fun `kids profiles cannot select or restore the calendar tab`() {
-        assertFalse(NavTab.CALENDAR in availableNavTabs(kidsProfile = true))
+    fun `kids profiles cannot select or restore the calendar or live tabs`() {
+        val kidsTabs = availableNavTabs(kidsProfile = true)
+        assertFalse(NavTab.CALENDAR in kidsTabs)
+        assertFalse(NavTab.LIVE in kidsTabs)
         assertEquals(NavTab.entries, availableNavTabs(kidsProfile = false))
         assertEquals(NavTab.HOME, visibleNavTab(NavTab.CALENDAR, kidsProfile = true))
+        assertEquals(NavTab.HOME, visibleNavTab(NavTab.LIVE, kidsProfile = true))
         assertEquals(NavTab.CALENDAR, visibleNavTab(NavTab.CALENDAR, kidsProfile = false))
+        assertEquals(NavTab.LIVE, visibleNavTab(NavTab.LIVE, kidsProfile = false))
     }
 
     @Test

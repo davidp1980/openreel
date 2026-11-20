@@ -49,10 +49,25 @@ class SelectedContentHolderTest {
         assertEquals("Show S02E03", playback?.label)
         assertEquals("tv:show:2:3", playback?.progressKey)
         assertEquals(true, playback?.fromStart)
+        assertEquals(false, playback?.isLive)
         assertEquals(media, playback?.media)
         assertEquals(next, playback?.next)
         assertTrue(playback?.requestedAtNs?.let { it != 0L } == true)
         assertEquals(emptyList<Nothing>(), playback?.sources)
+    }
+
+    @Test
+    fun `live playback flag propagates when explicitly enabled`() {
+        val holder = SelectedContentHolder()
+
+        holder.playQueue(
+            sources = emptyList(),
+            label = "La 1",
+            isLive = true,
+        )
+
+        assertEquals(true, holder.playback.value?.isLive)
+        assertNull(holder.playback.value?.progressKey)
     }
 
     @Test

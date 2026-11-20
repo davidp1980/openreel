@@ -86,6 +86,7 @@
     <string name="common_home">Inicio</string>
     <string name="common_episodes">Episodios</string>
     <string name="common_tv_shows">Series</string>
+    <string name="common_live_tv">Directo</string>
     <string name="common_movies">Películas</string>
     <string name="common_settings">Ajustes</string>
     <string name="common_my_list">Mi lista</string>

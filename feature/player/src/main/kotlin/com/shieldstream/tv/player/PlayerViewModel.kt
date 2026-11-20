@@ -2,6 +2,7 @@ package com.shieldstream.tv.player
 
 import com.shieldstream.tv.strings.R as StringsR
 import com.shieldstream.tv.strings.Texts
+import android.media.MediaDrm
 import android.util.Log
 import androidx.annotation.OptIn
 import androidx.lifecycle.ViewModel
@@ -13,10 +14,12 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import com.shieldstream.tv.domain.CatalogCacheRefresher
+import com.shieldstream.tv.domain.LiveDrmLicenseProvider
 import com.shieldstream.tv.domain.ResolveState
 import com.shieldstream.tv.domain.ResolveStreamUseCase
 import com.shieldstream.tv.domain.SelectedContentHolder
@@ -34,12 +37,15 @@ import com.shieldstream.tv.media.VideoFormatInspector
 import androidx.media3.common.PlaybackException
 import com.shieldstream.tv.model.ExternalSubtitle
 import com.shieldstream.tv.model.PlaybackVideoInfo
+import com.shieldstream.tv.model.StreamSource
 import com.shieldstream.tv.model.SubtitleAppearance
 import com.shieldstream.tv.model.SubtitlePreference
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -83,6 +89,7 @@ class PlayerViewModel @Inject constructor(
     private val subtitles: SubtitleRepository,
     private val trakt: TraktRepository,
     private val skipSegmentsRepository: SkipSegmentsRepository,
+    private val liveDrmProvider: LiveDrmLicenseProvider,
     private val texts: Texts,
     private val catalogCache: CatalogCacheRefresher,
 ) : ViewModel() {
@@ -119,6 +126,10 @@ class PlayerViewModel @Inject constructor(
     private val playbackSnapshot = holder.playback.value
     private val queueSnapshot = playbackSnapshot?.sources.orEmpty()
     private val mediaSnapshot = playbackSnapshot?.media
+    val isLive: Boolean = playbackSnapshot?.isLive == true || queueSnapshot.any { it.isLive }
+    internal var isWidevineSupported: () -> Boolean = {
+        runCatching { MediaDrm.isCryptoSchemeSupported(C.WIDEVINE_UUID) }.getOrDefault(false)
+    }
     val title: StateFlow<String> = MutableStateFlow(playbackSnapshot?.label.orEmpty()).asStateFlow()
 
     val seekThumbnails: StateFlow<Boolean> = combine(
@@ -149,8 +160,8 @@ class PlayerViewModel @Inject constructor(
     private val autoNext: StateFlow<Boolean> = settings.autoNextEpisode.stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     // --- Castellano de verdad ---------------------------------------------------------------------------
-    private val spanishOnly = profiles.active.value.spanishOnlySources
-    private val spanishFirst = profiles.active.value.spanishFirst || spanishOnly
+    private val spanishOnly = !isLive && profiles.active.value.spanishOnlySources
+    private val spanishFirst = !isLive && (profiles.active.value.spanishFirst || spanishOnly)
     private val subtitlePreference = profiles.active.value.subtitlePreference
     private val _subtitleAppearance = MutableStateFlow(profiles.active.value.subtitleAppearance)
     val subtitleAppearance: StateFlow<SubtitleAppearance> = _subtitleAppearance.asStateFlow()
@@ -168,6 +179,7 @@ class PlayerViewModel @Inject constructor(
     private var trackSelectionToRestore: TrackSelectionParameters? = null
     private var resolvedUrl: String? = null
     private var playingFileName: String? = null
+    private var currentSource: StreamSource? = null
     private var currentSourceId: String? = null
     private var resumePositionMs = 0L
 
@@ -230,7 +242,7 @@ class PlayerViewModel @Inject constructor(
             _uiState.value = PlayerUiState.Error(texts.get(StringsR.string.player_no_source_selected))
             return
         }
-        loadSegments()
+        if (!isLive) loadSegments()
         playFrom(0)
     }
 
@@ -267,9 +279,15 @@ class PlayerViewModel @Inject constructor(
         val source = event.source
         Log.i("PlayerVM", "Fuente ${event.index + 1}/${queueSnapshot.size}: ${(source.fileName ?: source.title).take(120)}")
         playingFileName = source.fileName ?: source.title
+        currentSource = source
         currentSourceId = source.id
-        val resumeAt = savedResumePosition()
         trackSelectionToRestore = null // Es otra fuente: las pistas de la anterior no aplican.
+        if (isLive) {
+            launchPlayer(event.url, startPositionMs = C.TIME_UNSET)
+            _uiState.value = PlayerUiState.Playing
+            return
+        }
+        val resumeAt = savedResumePosition()
         launchPlayer(event.url, startPositionMs = resumeAt)
         if (resumeAt > 0) _notice.value = texts.get(StringsR.string.player_resume_from, formatTime(resumeAt))
         _uiState.value = PlayerUiState.Playing
@@ -304,7 +322,23 @@ class PlayerViewModel @Inject constructor(
 
     fun autoSyncNow() = subtitleCoordinator.autoSyncNow()
 
-    private fun buildMediaItem(url: String): MediaItem = MediaItem.Builder().setUri(url).build()
+    private fun buildMediaItem(
+        url: String,
+        mimeType: String? = null,
+        licenseUrl: String? = null,
+    ): MediaItem = MediaItem.Builder()
+        .setUri(url)
+        .apply {
+            if (!mimeType.isNullOrBlank()) setMimeType(mimeType)
+            if (!licenseUrl.isNullOrBlank()) {
+                setDrmConfiguration(
+                    MediaItem.DrmConfiguration.Builder(C.WIDEVINE_UUID)
+                        .setLicenseUri(licenseUrl)
+                        .build(),
+                )
+            }
+        }
+        .build()
 
     // -----------------------------------------------------------------------
     // Progreso y ciclo de vida
@@ -459,6 +493,7 @@ class PlayerViewModel @Inject constructor(
     private var lastScrobble: ScrobbleAction? = null
 
     private fun scrobble(action: ScrobbleAction, fraction: Float? = null) {
+        if (isLive) return
         val key = progressKey ?: return
         if (action == lastScrobble) return
         val value = fraction ?: _player.value?.let { p ->
@@ -469,6 +504,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun saveProgress() {
+        if (isLive) return
         val key = progressKey ?: return
         val p = _player.value ?: return
         val duration = p.duration
@@ -482,6 +518,7 @@ class PlayerViewModel @Inject constructor(
      * `fraction` at 1f, which is what [com.shieldstream.tv.model.WatchProgress.isWatched] reads.
      */
     private fun markCurrentFinished() {
+        if (isLive) return
         val key = progressKey ?: return
         val known = _player.value?.duration?.takeIf { it > 0 }
             ?: watchProgress.get(key)?.durationMs?.takeIf { it > 1 }
@@ -511,7 +548,7 @@ class PlayerViewModel @Inject constructor(
         playbackVisible = true
         if (_player.value != null || playerCreationJob?.isActive == true) return
         val url = resolvedUrl ?: return
-        launchPlayer(url, resumePositionMs)
+        launchPlayer(url, if (isLive) C.TIME_UNSET else resumePositionMs)
     }
 
     fun onEarlyDisplayModeReady(player: ExoPlayer) {
@@ -539,8 +576,31 @@ class PlayerViewModel @Inject constructor(
         )
         if (!playbackVisible || generation != playerGeneration) return
         earlyPreparationPending = null
-        earlyFrameRate = if (matchContentFrameRate) frameRateProbe.probe(url) else null
-        if (matchContentFrameRate) trace("frame_rate_probe_finished", "rate=$earlyFrameRate")
+        val drmTokenUrl = currentSource?.drmTokenUrl
+        var licenseUrl: String? = null
+        if (drmTokenUrl != null) {
+            if (!isWidevineSupported()) {
+                val fallback = sourceFailover.onSourceOpenError("DRM_UNSUPPORTED", allowAfterPlayed = true)
+                if (fallback != null) {
+                    resolvedUrl = null
+                    playFrom(fallback.index)
+                    return
+                }
+            } else {
+                licenseUrl = withContext(Dispatchers.IO) {
+                    try {
+                        liveDrmProvider.widevineLicenseUrl(drmTokenUrl)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
+                if (!playbackVisible || generation != playerGeneration) return
+            }
+        }
+        earlyFrameRate = if (matchContentFrameRate && !isLive) frameRateProbe.probe(url) else null
+        if (matchContentFrameRate && !isLive) trace("frame_rate_probe_finished", "rate=$earlyFrameRate")
         if (!playbackVisible || generation != playerGeneration) return
         val player = media3Factory.createPlayer(policy)
         trace("player_created")
@@ -612,9 +672,9 @@ class PlayerViewModel @Inject constructor(
                         updateVideoInfo()
                         subtitleCoordinator.onPlayerReady(player, player.currentTracks)
                         checkSpanishAudio(player, player.currentTracks)
-                        if (checkErrorSlate(player)) return
+                        if (!isLive && checkErrorSlate(player)) return
                     }
-                    if (playbackState == Player.STATE_ENDED) {
+                    if (playbackState == Player.STATE_ENDED && !isLive) {
                         markCurrentFinished()
                         scrobble(ScrobbleAction.STOP, fraction = 1f)
                         if (!nextUpDismissed && autoNext.value) playNextNow()
@@ -624,14 +684,26 @@ class PlayerViewModel @Inject constructor(
                 override fun onPlayerError(error: PlaybackException) {
                     Log.w("PlayerVM", "Error de reproducción (${error.errorCodeName})", error)
                     saveProgress()
+                    if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
+                        player.seekToDefaultPosition()
+                        player.prepare()
+                        player.playWhenReady = true
+                        return
+                    }
+                    val isDrmError = error.errorCode in
+                        PlaybackException.ERROR_CODE_DRM_UNSPECIFIED..PlaybackException.ERROR_CODE_DRM_LICENSE_EXPIRED
                     val sourceError = error.errorCode in
                         PlaybackException.ERROR_CODE_IO_UNSPECIFIED..PlaybackException.ERROR_CODE_PARSING_MANIFEST_UNSUPPORTED
-                    if (sourceError) {
-                        val action = sourceFailover.onSourceOpenError(error.errorCodeName)
+                    if (sourceError || isDrmError) {
+                        val action = sourceFailover.onSourceOpenError(error.errorCodeName, allowAfterPlayed = isDrmError)
                         if (action != null) {
                             switchSource(player, action)
                             return
                         }
+                    }
+                    if (isLive && isHttp403(error)) {
+                        _uiState.value = PlayerUiState.Error(texts.get(StringsR.string.player_live_geo_blocked))
+                        return
                     }
                     if (playbackRetries < 1) {
                         playbackRetries++
@@ -665,7 +737,12 @@ class PlayerViewModel @Inject constructor(
 
             },
         )
-        player.setMediaItem(buildMediaItem(url), startPositionMs)
+        val mediaItem = buildMediaItem(url, currentSource?.mimeType, licenseUrl)
+        if (isLive || startPositionMs == C.TIME_UNSET) {
+            player.setMediaItem(mediaItem)
+        } else {
+            player.setMediaItem(mediaItem, startPositionMs)
+        }
         sourceFailover.onPlayerCreated()
         _player.value = player
         if (earlyFrameRate != null) {
@@ -706,6 +783,11 @@ class PlayerViewModel @Inject constructor(
         const val MIN_EPISODE_MS = 5 * 60_000L
         const val CATALOG_REFRESH_DELAY_MS = 30_000L
     }
+
+    private fun isHttp403(error: Throwable): Boolean =
+        generateSequence<Throwable>(error) { it.cause }.any {
+            it is HttpDataSource.InvalidResponseCodeException && it.responseCode == 403
+        }
 
     private fun formatTime(ms: Long): String {
         val total = ms / 1000

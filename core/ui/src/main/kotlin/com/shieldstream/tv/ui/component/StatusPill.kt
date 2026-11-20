@@ -29,6 +29,7 @@ fun StatusPill(
     text: String,
     modifier: Modifier = Modifier,
     dot: Boolean = true,
+    dotColor: Color = AppColors.Highlight,
 ) {
     Row(
         modifier = modifier
@@ -37,7 +38,7 @@ fun StatusPill(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (dot) {
-            Box(Modifier.size(6.dp).background(AppColors.Highlight, CircleShape))
+            Box(Modifier.size(6.dp).background(dotColor, CircleShape))
             Spacer(Modifier.width(5.dp))
         }
         Text(

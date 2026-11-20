@@ -43,6 +43,12 @@ import com.shieldstream.tv.data.repository.IthilAccessRepositoryImpl
 import com.shieldstream.tv.domain.IthilAccessRepository
 import com.shieldstream.tv.data.repository.CalendarRepositoryImpl
 import com.shieldstream.tv.domain.CalendarRepository
+import com.shieldstream.tv.data.rtve.RtveDrmTokenClient
+import com.shieldstream.tv.data.rtve.RtveHttpClient
+import com.shieldstream.tv.data.rtve.RtveLiveRepositoryImpl
+import com.shieldstream.tv.data.rtve.RtveTextClient
+import com.shieldstream.tv.domain.LiveDrmLicenseProvider
+import com.shieldstream.tv.domain.LiveTvRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -140,5 +146,17 @@ abstract class DataModule {
     @Binds
     @Singleton
     abstract fun bindIthilAccessRepository(impl: IthilAccessRepositoryImpl): IthilAccessRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindRtveTextClient(impl: RtveHttpClient): RtveTextClient
+
+    @Binds
+    @Singleton
+    abstract fun bindLiveTvRepository(impl: RtveLiveRepositoryImpl): LiveTvRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindLiveDrmLicenseProvider(impl: RtveDrmTokenClient): LiveDrmLicenseProvider
 
 }

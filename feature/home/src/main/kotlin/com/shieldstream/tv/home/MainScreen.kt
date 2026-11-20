@@ -26,6 +26,7 @@ import com.shieldstream.tv.model.Category
 import com.shieldstream.tv.model.ContinueInfo
 import com.shieldstream.tv.model.Episode
 import com.shieldstream.tv.model.HomeFilter
+import com.shieldstream.tv.model.StreamSource
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.shieldstream.tv.ui.component.NavRail
 import com.shieldstream.tv.ui.component.NavTab
@@ -42,6 +43,7 @@ fun MainScreen(
     onOpenNewEpisode: (CatalogItem, Episode) -> Unit,
     onUpNext: (CatalogItem, Episode) -> Unit,
     onOpenSettings: () -> Unit,
+    onPlayLive: (List<StreamSource>, String) -> Unit = { _, _ -> },
     profileInitial: String? = null,
     profileAvatar: Int = 0,
     kidsProfile: Boolean = false,
@@ -76,7 +78,7 @@ fun MainScreen(
     val showRail = tab != NavTab.CALENDAR || railFocused || revealRail
     LaunchedEffect(revealRail) { if (revealRail) railRequester.requestFocusWithRetry() }
 
-    val railFocusable = homeInteractive || tab == NavTab.SEARCH || tab == NavTab.MY_LIST || tab == NavTab.EPISODES || tab == NavTab.CALENDAR
+    val railFocusable = homeInteractive || tab == NavTab.SEARCH || tab == NavTab.MY_LIST || tab == NavTab.EPISODES || tab == NavTab.CALENDAR || tab == NavTab.LIVE
     BackHandler(enabled = showExitConfirmation || shouldRequestExit(category != null, railFocused || !railFocusable)) {
         showExitConfirmation = !showExitConfirmation
     }
@@ -108,12 +110,13 @@ fun MainScreen(
                         onOpenEpisode = { onOpenNewEpisode(it.show, it.episode) },
                         onOpenRelease = { onOpenItem(it.item) },
                     )
-                    NavTab.SEARCH, NavTab.MY_LIST, NavTab.EPISODES -> Box(
+                    NavTab.SEARCH, NavTab.MY_LIST, NavTab.EPISODES, NavTab.LIVE -> Box(
                         Modifier.fillMaxSize().padding(start = TabContentInset),
                     ) {
                         when (tab) {
                             NavTab.SEARCH -> SearchScreen(onItemClick = onOpenItem)
                             NavTab.EPISODES -> EpisodeCenterScreen(onOpenEpisode = onOpenNewEpisode, viewModel = episodeCenter)
+                            NavTab.LIVE -> LiveTvScreen(onPlayLive = onPlayLive)
                             else -> saveable.SaveableStateProvider("tab_${tab.name}") { MyListScreen(onItemClick = onOpenItem) }
                         }
                     }
@@ -141,7 +144,7 @@ fun MainScreen(
                     if (selected in tabs && selected != tab) {
                         savedTab = selected
                         focusMenuAfterSwitch = selected != NavTab.SEARCH && selected != NavTab.MY_LIST &&
-                            selected != NavTab.EPISODES && selected != NavTab.CALENDAR
+                            selected != NavTab.EPISODES && selected != NavTab.CALENDAR && selected != NavTab.LIVE
                     }
                 },
                 onSettings = onOpenSettings,
@@ -176,7 +179,7 @@ fun MainScreen(
 private val TabContentInset = RailContentStart - 48.dp
 
 internal fun availableNavTabs(kidsProfile: Boolean): List<NavTab> =
-    if (kidsProfile) NavTab.entries.filterNot { it == NavTab.CALENDAR } else NavTab.entries
+    if (kidsProfile) NavTab.entries.filterNot { it == NavTab.CALENDAR || it == NavTab.LIVE } else NavTab.entries
 
 internal fun visibleNavTab(requested: NavTab, kidsProfile: Boolean): NavTab =
     requested.takeIf { it in availableNavTabs(kidsProfile) } ?: NavTab.HOME

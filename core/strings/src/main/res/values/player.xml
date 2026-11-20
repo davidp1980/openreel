@@ -84,4 +84,12 @@
     <string name="player_evaluating_candidates">Testing %1$d candidates · %2$d reference cues</string>
     <string name="player_track_number">Track %1$d</string>
     <string name="player_subtitle_number">Subtitle %1$d</string>
+    <string name="player_live_badge">LIVE</string>
+    <string name="player_live_controls_hint">OK pause · ◀ ▶ 10 s · ▼ Audio &amp; subtitles</string>
+    <string name="player_live_behind_hint">OK pause · ▲ Jump to live · ▼ Audio &amp; subtitles</string>
+    <string name="player_live_geo_blocked">This broadcast isn\'t available in your region.</string>
+    <string name="player_live_press_back_to_return">Press Back to return to channels</string>
+    <string name="player_back_to_return_to_live">Back to return to live TV</string>
+    <string name="player_audio_original_version">Original version</string>
+    <string name="player_audio_description">Audio description</string>
 </resources>

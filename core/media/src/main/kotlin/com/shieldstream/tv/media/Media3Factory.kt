@@ -14,10 +14,13 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManagerProvider
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import okhttp3.OkHttpClient
 import com.shieldstream.tv.media.mkv.LenientExtractorsFactory
 import androidx.media3.exoplayer.Renderer
 import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
@@ -37,8 +40,11 @@ import android.media.MediaCodecInfo.CodecProfileLevel as AndroidProfileLevel
 @Singleton
 class Media3Factory @Inject constructor(
     @ApplicationContext private val context: Context,
+    okHttpClient: OkHttpClient,
 ) {
-    val dataSourceFactory: DataSource.Factory = DefaultDataSource.Factory(context)
+    private val httpDataSourceFactory: OkHttpDataSource.Factory = OkHttpDataSource.Factory(okHttpClient)
+
+    val dataSourceFactory: DataSource.Factory = DefaultDataSource.Factory(context, httpDataSourceFactory)
 
     fun createPlayer(policy: PlaybackPolicy): ExoPlayer {
         val codecSelector = MediaCodecSelector { mimeType, secure, tunneling ->
@@ -74,10 +80,17 @@ class Media3Factory @Inject constructor(
             .setPrioritizeTimeOverSizeThresholds(false)
             .build()
 
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, LenientExtractorsFactory())
+            .setDrmSessionManagerProvider(
+                DefaultDrmSessionManagerProvider().apply {
+                    setDrmHttpDataSourceFactory(httpDataSourceFactory)
+                },
+            )
+
         return ExoPlayer.Builder(context, renderersFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory, LenientExtractorsFactory()))
+            .setMediaSourceFactory(mediaSourceFactory)
             .build()
             .also { if (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0) it.addAnalyticsListener(EventLogger()) }
     }

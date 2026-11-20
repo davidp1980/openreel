@@ -146,8 +146,11 @@ internal class SourceFailoverController(
         )
     }
 
-    fun onSourceOpenError(errorCodeName: String): SourceFailoverAction.SwitchSource? {
-        if (everPlayed || queueIndex + 1 >= queue.size) return null
+    fun onSourceOpenError(
+        errorCodeName: String,
+        allowAfterPlayed: Boolean = false,
+    ): SourceFailoverAction.SwitchSource? {
+        if ((!allowAfterPlayed && everPlayed) || queueIndex + 1 >= queue.size) return null
         lastQueueError = texts.get(StringsR.string.player_source_open_error, errorCodeName)
         allNotCached = false
         return SourceFailoverAction.SwitchSource(queueIndex + 1)

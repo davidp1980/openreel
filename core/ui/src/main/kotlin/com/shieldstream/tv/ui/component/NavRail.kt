@@ -61,6 +61,7 @@ enum class NavTab(val icon: ImageVector) {
     HOME(LineIcons.Home),
     MOVIES(LineIcons.Movie),
     TV(LineIcons.Tv),
+    LIVE(LineIcons.LiveTv),
     EPISODES(LineIcons.Episodes),
     CALENDAR(LineIcons.Calendar),
     MY_LIST(LineIcons.Bookmark),
@@ -73,6 +74,7 @@ private val NavTab.labelResource: Int
         NavTab.HOME -> StringsR.string.common_home
         NavTab.MOVIES -> StringsR.string.common_movies
         NavTab.TV -> StringsR.string.common_tv_shows
+        NavTab.LIVE -> StringsR.string.common_live_tv
         NavTab.EPISODES -> StringsR.string.common_episodes
         NavTab.CALENDAR -> StringsR.string.calendar_title
         NavTab.MY_LIST -> StringsR.string.common_my_list
@@ -129,8 +131,8 @@ fun NavRail(
             modifier = Modifier
                 .fillMaxHeight()
                 .width(if (expanded) RailExpandedWidth else RailCollapsedWidth)
-                .padding(horizontal = 12.dp, vertical = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 12.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (profileInitial != null) {
                 RailItem(
@@ -220,7 +222,7 @@ private fun RailItem(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(42.dp)
             .background(background, AppShapes.Pill)
             .drawBehind {
                 if (marker) {

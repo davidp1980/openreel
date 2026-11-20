@@ -22,6 +22,9 @@ data class StreamSource(
     val provider: String = "",
     val season: Int? = null,
     val episode: Int? = null,
+    val mimeType: String? = null,
+    val drmTokenUrl: String? = null,
+    val isLive: Boolean = false,
 ) {
     val displayLabel: String
         get() = buildString {

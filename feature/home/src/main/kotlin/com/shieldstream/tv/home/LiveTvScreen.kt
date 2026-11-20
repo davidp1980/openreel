@@ -1,0 +1,362 @@
+package com.shieldstream.tv.home
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.shieldstream.tv.model.Lang
+import com.shieldstream.tv.model.LiveChannel
+import com.shieldstream.tv.model.StreamSource
+import com.shieldstream.tv.strings.R as StringsR
+import com.shieldstream.tv.strings.localizedStringResource
+import com.shieldstream.tv.ui.component.CardImage
+import com.shieldstream.tv.ui.component.StatusPill
+import com.shieldstream.tv.ui.component.TvButton
+import com.shieldstream.tv.ui.component.requestFocusWithRetry
+import com.shieldstream.tv.ui.component.tvClickable
+import com.shieldstream.tv.ui.theme.AppColors
+import com.shieldstream.tv.ui.theme.AppShapes
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+
+@Composable
+fun LiveTvScreen(
+    onPlayLive: (List<StreamSource>, String) -> Unit,
+    viewModel: LiveTvViewModel = hiltViewModel(),
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val notice by viewModel.notice.collectAsStateWithLifecycle()
+    val cardRequester = remember { FocusRequester() }
+    var lastCardKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+
+    LaunchedEffect(Unit) {
+        viewModel.activate()
+        var ticks = 0
+        while (true) {
+            delay(PROGRESS_TICK_MS)
+            nowMillis = System.currentTimeMillis()
+            if (++ticks % REFRESH_TICKS == 0) {
+                viewModel.refreshSilent()
+            }
+        }
+    }
+
+    LaunchedEffect(notice) {
+        if (notice != null) {
+            delay(NOTICE_DURATION_MS)
+            viewModel.clearNotice()
+        }
+    }
+
+    LaunchedEffect(state is LiveTvUiState.Content) {
+        if (state is LiveTvUiState.Content && lastCardKey != null) {
+            cardRequester.requestFocusWithRetry()
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().padding(start = 48.dp, end = 36.dp, top = 24.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = localizedStringResource(StringsR.string.live_tv_title),
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                    modifier = Modifier.weight(1f),
+                )
+                TvButton(
+                    text = localizedStringResource(StringsR.string.live_tv_refresh),
+                    onClick = viewModel::refresh,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+
+            when (val current = state) {
+                LiveTvUiState.Loading -> Text(
+                    text = localizedStringResource(StringsR.string.live_tv_loading),
+                    color = Color.White.copy(alpha = 0.6f),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                is LiveTvUiState.Error -> Column {
+                    Text(
+                        text = current.message,
+                        color = Color.White.copy(alpha = 0.75f),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    TvButton(
+                        text = localizedStringResource(StringsR.string.home_retry),
+                        onClick = viewModel::refresh,
+                    )
+                }
+                is LiveTvUiState.Content -> {
+                    if (current.sections.isEmpty()) {
+                        Text(
+                            text = localizedStringResource(StringsR.string.live_tv_empty),
+                            color = Color.White.copy(alpha = 0.65f),
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    } else {
+                        LazyColumn(contentPadding = PaddingValues(bottom = 48.dp)) {
+                            current.sections.forEachIndexed { sectionIndex, section ->
+                                item(key = "header_${section.id}") {
+                                    if (sectionIndex > 0) Spacer(Modifier.height(12.dp))
+                                    val sectionTitle = section.title.ifBlank {
+                                        localizedStringResource(StringsR.string.live_tv_section_now)
+                                    }
+                                    Text(
+                                        text = sectionTitle,
+                                        color = Color.White,
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    )
+                                    Spacer(Modifier.height(12.dp))
+                                }
+                                val rows = section.channels.chunked(GRID_COLUMNS)
+                                itemsIndexed(
+                                    items = rows,
+                                    key = { index, row -> "${section.id}_row_${row.firstOrNull()?.key ?: index}" },
+                                ) { _, row ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 20.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                    ) {
+                                        row.forEach { channel ->
+                                            LiveChannelCard(
+                                                channel = channel,
+                                                nowMillis = nowMillis,
+                                                onClick = {
+                                                    lastCardKey = channel.key
+                                                    viewModel.resolvePlayback(channel)?.let { ready ->
+                                                        onPlayLive(ready.sources, ready.title)
+                                                    }
+                                                },
+                                                onFocused = { lastCardKey = channel.key },
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .then(
+                                                        if (channel.key == lastCardKey) {
+                                                            Modifier.focusRequester(cardRequester)
+                                                        } else {
+                                                            Modifier
+                                                        },
+                                                    ),
+                                            )
+                                        }
+                                        repeat(GRID_COLUMNS - row.size) {
+                                            Spacer(Modifier.weight(1f))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        notice?.let { message ->
+            Text(
+                text = message,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 24.dp)
+                    .background(AppColors.PillScrim, AppShapes.Pill)
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun LiveChannelCard(
+    channel: LiveChannel,
+    nowMillis: Long,
+    onClick: () -> Unit,
+    onFocused: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val scale = if (focused) 1.04f else 1f
+    val isUpcoming = channel.isUpcomingAt(nowMillis)
+    val startLabel = remember(channel.startsAtMillis) {
+        channel.startsAtMillis?.let { SimpleDateFormat("HH:mm", Lang.locale).format(Date(it)) }
+    }
+    val progress = if (isUpcoming) null else channel.progressAt(nowMillis)
+
+    Column(
+        modifier = modifier
+            .zIndex(if (focused) 1f else 0f)
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
+            }
+            .tvClickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(AppShapes.Control)
+                .background(AppColors.Placeholder)
+                .then(
+                    if (focused) {
+                        Modifier.border(2.dp, Color.White.copy(alpha = 0.88f), AppShapes.Control)
+                    } else {
+                        Modifier
+                    },
+                ),
+        ) {
+            val imageUrl = channel.imageUrl
+            if (imageUrl != null) {
+                CardImage(
+                    url = imageUrl,
+                    contentDescription = channel.title,
+                    width = CARD_DECODE_WIDTH,
+                    height = CARD_DECODE_HEIGHT,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Text(
+                    text = channel.title,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.align(Alignment.Center).padding(12.dp),
+                )
+            }
+
+            if (isUpcoming && startLabel != null) {
+                StatusPill(
+                    text = startLabel,
+                    dot = false,
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                )
+            } else {
+                StatusPill(
+                    text = localizedStringResource(StringsR.string.live_tv_badge_live),
+                    dot = true,
+                    dotColor = AppColors.Alert,
+                    modifier = Modifier.align(Alignment.TopStart).padding(8.dp),
+                )
+            }
+
+            channel.logoUrl?.let { logo ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp)
+                        .background(AppColors.PillScrim, AppShapes.Badge)
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                ) {
+                    CardImage(
+                        url = logo,
+                        contentDescription = null,
+                        width = LOGO_WIDTH,
+                        height = LOGO_HEIGHT,
+                        fit = true,
+                        modifier = Modifier.size(LOGO_WIDTH, LOGO_HEIGHT),
+                    )
+                }
+            }
+
+            if (progress != null) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(Color.White.copy(alpha = 0.25f)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progress)
+                            .fillMaxHeight()
+                            .background(AppColors.Highlight),
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = channel.title,
+            color = Color.White,
+            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val subtitle = if (isUpcoming && startLabel != null) {
+            localizedStringResource(StringsR.string.live_tv_starts_at, startLabel)
+        } else {
+            channel.category
+        }
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                text = subtitle,
+                color = Color.White.copy(alpha = 0.65f),
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private const val GRID_COLUMNS = 3
+private const val PROGRESS_TICK_MS = 30_000L
+private const val REFRESH_TICKS = 2
+private const val NOTICE_DURATION_MS = 3_500L
+private val CARD_DECODE_WIDTH = 265.dp
+private val CARD_DECODE_HEIGHT = 149.dp
+private val LOGO_WIDTH = 48.dp
+private val LOGO_HEIGHT = 22.dp

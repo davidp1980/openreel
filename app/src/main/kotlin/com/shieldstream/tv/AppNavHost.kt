@@ -148,6 +148,20 @@ fun AppNavHost(
                     }
                 },
                 onOpenSettings = { navController.navigate("settings") },
+                onPlayLive = { sources, label ->
+                    if (entry.isVisible()) {
+                        holder.playQueue(
+                            sources = sources,
+                            label = label,
+                            progressKey = null,
+                            fromStart = true,
+                            media = null,
+                            next = null,
+                            isLive = true,
+                        )
+                        navController.navigate("player")
+                    }
+                },
             )
             UpdatePrompt()
         }

@@ -84,4 +84,12 @@
     <string name="player_evaluating_candidates">Probando %1$d candidatos · %2$d frases de referencia</string>
     <string name="player_track_number">Pista %1$d</string>
     <string name="player_subtitle_number">Subtítulo %1$d</string>
+    <string name="player_live_badge">DIRECTO</string>
+    <string name="player_live_controls_hint">OK pausa · ◀ ▶ 10 s · ▼ Audio y subtítulos</string>
+    <string name="player_live_behind_hint">OK pausa · ▲ Volver al directo · ▼ Audio y subtítulos</string>
+    <string name="player_live_geo_blocked">Esta emisión no está disponible en tu región.</string>
+    <string name="player_live_press_back_to_return">Pulsa Atrás para volver a los canales</string>
+    <string name="player_back_to_return_to_live">Atrás para volver al directo</string>
+    <string name="player_audio_original_version">Versión original</string>
+    <string name="player_audio_description">Audiodescripción</string>
 </resources>

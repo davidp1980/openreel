@@ -54,4 +54,18 @@
     <string name="home_category_load_error">Error loading “%1$s”</string>
     <string name="home_continue_episode_remaining">S%1$s:E%2$s · %3$s</string>
     <string name="home_remaining">%1$s left</string>
+    <string name="live_tv_title">Live TV · RTVE</string>
+    <string name="live_tv_loading">Loading live channels…</string>
+    <string name="live_tv_empty">No live broadcasts available right now.</string>
+    <string name="live_tv_error">Couldn\'t load live channels. Check your connection.</string>
+    <string name="live_tv_refresh">Refresh</string>
+    <string name="live_tv_section_now">Live now</string>
+    <string name="live_tv_section_thematic">24/7 channels</string>
+    <string name="live_tv_badge_live">LIVE</string>
+    <string name="live_tv_starts_at">Starts at %1$s</string>
+    <string name="live_tv_blocked_geo">This broadcast isn\'t available in your region.</string>
+    <string name="live_tv_blocked_upcoming">This broadcast starts at %1$s.</string>
+    <string name="live_tv_blocked_upcoming_soon">This broadcast hasn\'t started yet.</string>
+    <string name="live_tv_blocked_paid">This broadcast requires RTVE Play+.</string>
+    <string name="live_tv_blocked_unavailable">Stream unavailable right now.</string>
 </resources>

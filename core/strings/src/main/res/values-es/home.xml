@@ -54,4 +54,18 @@
     <string name="home_category_load_error">Error cargando «%1$s»</string>
     <string name="home_continue_episode_remaining">T%1$s:E%2$s · %3$s</string>
     <string name="home_remaining">Quedan %1$s</string>
+    <string name="live_tv_title">TV en directo · RTVE</string>
+    <string name="live_tv_loading">Cargando canales en directo…</string>
+    <string name="live_tv_empty">No hay emisiones en directo disponibles ahora mismo.</string>
+    <string name="live_tv_error">No se pudieron cargar los canales en directo. Revisa la conexión.</string>
+    <string name="live_tv_refresh">Actualizar</string>
+    <string name="live_tv_section_now">En directo ahora</string>
+    <string name="live_tv_section_thematic">Canales temáticos</string>
+    <string name="live_tv_badge_live">DIRECTO</string>
+    <string name="live_tv_starts_at">Empieza a las %1$s</string>
+    <string name="live_tv_blocked_geo">Esta emisión no está disponible en tu región.</string>
+    <string name="live_tv_blocked_upcoming">Esta emisión empieza a las %1$s.</string>
+    <string name="live_tv_blocked_upcoming_soon">Esta emisión aún no ha comenzado.</string>
+    <string name="live_tv_blocked_paid">Esta emisión requiere RTVE Play+.</string>
+    <string name="live_tv_blocked_unavailable">Emisión no disponible ahora mismo.</string>
 </resources>

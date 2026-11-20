@@ -50,6 +50,7 @@ fun CardImage(
     width: Dp,
     height: Dp,
     modifier: Modifier = Modifier,
+    fit: Boolean = false,
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
@@ -81,7 +82,7 @@ fun CardImage(
                 },
             )
             // Reading the image here invalidates only the draw phase when it arrives.
-            .drawBehind { load.image?.let { drawCentreCrop(it) } },
+            .drawBehind { load.image?.let { if (fit) drawFit(it) else drawCentreCrop(it) } },
     )
 }
 
@@ -138,6 +139,26 @@ internal fun DrawScope.drawCentreCrop(image: ImageBitmap) {
         srcOffset = src.first,
         srcSize = src.second,
         dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+        filterQuality = FilterQuality.Low,
+    )
+}
+
+/** Draws [image] centred inside this box without cropping, like `ContentScale.Fit`. */
+internal fun DrawScope.drawFit(image: ImageBitmap) {
+    if (image.width <= 0 || image.height <= 0 || size.width <= 0f || size.height <= 0f) return
+    val scale = kotlin.math.min(size.width / image.width, size.height / image.height)
+    val dstWidth = (image.width * scale).roundToInt().coerceAtLeast(1)
+    val dstHeight = (image.height * scale).roundToInt().coerceAtLeast(1)
+    val dstOffset = IntOffset(
+        ((size.width - dstWidth) / 2f).roundToInt(),
+        ((size.height - dstHeight) / 2f).roundToInt(),
+    )
+    drawImage(
+        image = image,
+        srcOffset = IntOffset.Zero,
+        srcSize = IntSize(image.width, image.height),
+        dstOffset = dstOffset,
+        dstSize = IntSize(dstWidth, dstHeight),
         filterQuality = FilterQuality.Low,
     )
 }

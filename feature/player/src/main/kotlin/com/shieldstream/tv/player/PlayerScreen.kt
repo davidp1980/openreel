@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -103,7 +104,9 @@ fun PlayerScreen(
     val subtitleTiming by viewModel.subtitleTiming.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val subtitleAppearance by viewModel.subtitleAppearance.collectAsStateWithLifecycle()
-    val thumbnailsEnabled by viewModel.seekThumbnails.collectAsStateWithLifecycle()
+    val rawThumbnailsEnabled by viewModel.seekThumbnails.collectAsStateWithLifecycle()
+    val isLive = viewModel.isLive
+    val thumbnailsEnabled = !isLive && rawThumbnailsEnabled
     val nextUp by viewModel.nextUp.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val skipPrompt by viewModel.skipPrompt.collectAsStateWithLifecycle()
@@ -168,7 +171,7 @@ fun PlayerScreen(
             it.colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 || it.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION
         } ?: false
     }
-    val thumbs = rememberSeekThumbnails(mediaUri, pqHdr, active = scrubbing)
+    val thumbs = rememberSeekThumbnails(mediaUri, pqHdr, active = scrubbing && !isLive)
     LaunchedEffect(player) { scrubMs = null }
 
     val focusRequester = remember { FocusRequester() }
@@ -291,20 +294,33 @@ fun PlayerScreen(
             Key.MediaPlay -> { p.play(); showControls(); true }
             Key.MediaPause -> { p.pause(); showControls(); true }
             Key.DirectionLeft, Key.MediaRewind -> {
-                val step = seekStepMs(event.nativeKeyEvent.repeatCount)
-                if (thumbnailsEnabled) {
-                    scrub(-step)
+                if (isLive || playback.isCurrentLive) {
+                    if (p.isCurrentMediaItemSeekable) {
+                        seekDirectly(-seekStepMs(event.nativeKeyEvent.repeatCount))
+                    } else {
+                        showControls()
+                    }
                 } else {
-                    seekDirectly(-step)
+                    val step = seekStepMs(event.nativeKeyEvent.repeatCount)
+                    if (thumbnailsEnabled) scrub(-step) else seekDirectly(-step)
                 }
                 true
             }
             Key.DirectionRight, Key.MediaFastForward -> {
-                val step = seekStepMs(event.nativeKeyEvent.repeatCount)
-                if (thumbnailsEnabled) {
-                    scrub(step)
+                if (isLive || playback.isCurrentLive) {
+                    if (p.isCurrentMediaItemSeekable) {
+                        if (playback.isAtLiveEdge) {
+                            p.seekToDefaultPosition()
+                            showControls()
+                        } else {
+                            seekDirectly(seekStepMs(event.nativeKeyEvent.repeatCount))
+                        }
+                    } else {
+                        showControls()
+                    }
                 } else {
-                    seekDirectly(step)
+                    val step = seekStepMs(event.nativeKeyEvent.repeatCount)
+                    if (thumbnailsEnabled) scrub(step) else seekDirectly(step)
                 }
                 true
             }
@@ -318,6 +334,10 @@ fun PlayerScreen(
                 true
             }
             Key.DirectionUp, Key.Info -> {
+                if ((isLive || playback.isCurrentLive) && controlsVisible && !playback.isAtLiveEdge) {
+                    p.seekToDefaultPosition()
+                    p.play()
+                }
                 showControls()
                 true
             }
@@ -395,6 +415,7 @@ fun PlayerScreen(
                     scrubMs = scrubMs,
                     thumbs = thumbs,
                     thumbnailsEnabled = thumbnailsEnabled,
+                    isLive = isLive,
                 )
             }
             seekFeedback?.let {
@@ -448,6 +469,8 @@ fun PlayerScreen(
                         tracksOpen = false
                         syncOpen = true
                     },
+                    allowExternalSubtitles = !isLive,
+                    isLive = isLive,
                 )
             }
         }
@@ -470,8 +493,8 @@ fun PlayerScreen(
         }
 
         when (val s = state) {
-            is PlayerUiState.Resolving -> StatusOverlay(title = title, message = s.message, loading = true)
-            is PlayerUiState.Error -> StatusOverlay(title = title, message = s.message, loading = false)
+            is PlayerUiState.Resolving -> StatusOverlay(title = title, message = s.message, loading = true, isLive = isLive)
+            is PlayerUiState.Error -> StatusOverlay(title = title, message = s.message, loading = false, isLive = isLive)
             PlayerUiState.Playing -> Unit
         }
     }
@@ -479,6 +502,7 @@ fun PlayerScreen(
 
 private const val NEXT_FILL_SECONDS = 10
 private const val SKIP_VISIBLE_MS = 10_000L
+private const val LIVE_EDGE_TOLERANCE_MS = 15_000L
 
 @Composable
 private fun PlayerPill(text: String, icon: ImageVector, fill: Float?, modifier: Modifier = Modifier) {
@@ -512,6 +536,9 @@ private class PlaybackState {
     var positionMs by mutableLongStateOf(0L)
     var durationMs by mutableLongStateOf(0L)
     var bufferedMs by mutableLongStateOf(0L)
+    var isCurrentLive by mutableStateOf(false)
+    var isAtLiveEdge by mutableStateOf(true)
+    var liveOffsetMs by mutableLongStateOf(0L)
 }
 
 @Composable
@@ -534,6 +561,12 @@ private fun rememberPlaybackState(player: ExoPlayer?): PlaybackState {
                 state.positionMs = it.currentPosition
                 state.durationMs = it.duration.coerceAtLeast(0L)
                 state.bufferedMs = it.bufferedPosition
+                state.isCurrentLive = it.isCurrentMediaItemLive
+                val offset = it.currentLiveOffset
+                state.liveOffsetMs = offset.takeIf { o -> o != C.TIME_UNSET && o > 0L } ?: 0L
+                state.isAtLiveEdge = !it.isCurrentMediaItemLive ||
+                    offset == C.TIME_UNSET ||
+                    offset in 0L..LIVE_EDGE_TOLERANCE_MS
             }
             delay(500)
         }
@@ -549,7 +582,9 @@ private fun ControlsOverlay(
     scrubMs: Long?,
     thumbs: SeekThumbnails?,
     thumbnailsEnabled: Boolean,
+    isLive: Boolean,
 ) {
+    val liveMode = isLive || playback.isCurrentLive
     val shownMs = scrubMs ?: playback.positionMs
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -580,43 +615,99 @@ private fun ControlsOverlay(
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))))
                 .padding(start = 48.dp, end = 48.dp, top = 60.dp, bottom = 32.dp),
         ) {
-            if (scrubMs != null) {
+            if (!liveMode && scrubMs != null) {
                 SeekThumbnailStrip(thumbs = thumbs, targetMs = scrubMs, durationMs = playback.durationMs)
                 Spacer(Modifier.height(18.dp))
             }
-            SeekBar(playback, shownMs)
-            Spacer(Modifier.height(14.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = if (playback.isPlaying) AppIcons.Pause else AppIcons.Play,
-                    contentDescription = if (playback.isPlaying) localizedStringResource(StringsR.string.player_pause) else localizedStringResource(StringsR.string.player_play),
-                    tint = Color.White,
-                    modifier = Modifier.size(34.dp),
-                )
-                Spacer(Modifier.width(16.dp))
-                Text(
-                    text = formatTime(shownMs),
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = when {
-                        scrubMs != null -> localizedStringResource(StringsR.string.player_ok_jump_here_back_return)
-                        thumbnailsEnabled -> localizedStringResource(StringsR.string.player_ok_pause_seek_audio_subtitles)
-                        else -> localizedStringResource(StringsR.string.player_ok_pause_10_s_audio_subtitles)
-                    },
-                    color = Color.White.copy(alpha = 0.5f),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(Modifier.width(24.dp))
-                Text(
-                    text = if (playback.durationMs > 0) "-" + formatTime(playback.durationMs - shownMs) else "",
-                    color = Color.White,
-                    style = MaterialTheme.typography.titleMedium,
-                )
+            if (liveMode) {
+                LiveSeekBar(playback)
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (playback.isPlaying) AppIcons.Pause else AppIcons.Play,
+                        contentDescription = if (playback.isPlaying) localizedStringResource(StringsR.string.player_pause) else localizedStringResource(StringsR.string.player_play),
+                        tint = Color.White,
+                        modifier = Modifier.size(34.dp),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Box(
+                        Modifier
+                            .size(8.dp)
+                            .background(
+                                color = if (playback.isAtLiveEdge) AppColors.Alert else Color.White.copy(alpha = 0.45f),
+                                shape = CircleShape,
+                            ),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    val liveLabel = localizedStringResource(StringsR.string.player_live_badge)
+                    Text(
+                        text = if (!playback.isAtLiveEdge && playback.liveOffsetMs > 0L) {
+                            "$liveLabel · -${formatTime(playback.liveOffsetMs)}"
+                        } else {
+                            liveLabel
+                        },
+                        color = if (playback.isAtLiveEdge) Color.White else Color.White.copy(alpha = 0.75f),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = if (!playback.isAtLiveEdge) {
+                            localizedStringResource(StringsR.string.player_live_behind_hint)
+                        } else {
+                            localizedStringResource(StringsR.string.player_live_controls_hint)
+                        },
+                        color = Color.White.copy(alpha = 0.5f),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            } else {
+                SeekBar(playback, shownMs)
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (playback.isPlaying) AppIcons.Pause else AppIcons.Play,
+                        contentDescription = if (playback.isPlaying) localizedStringResource(StringsR.string.player_pause) else localizedStringResource(StringsR.string.player_play),
+                        tint = Color.White,
+                        modifier = Modifier.size(34.dp),
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Text(
+                        text = formatTime(shownMs),
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        text = when {
+                            scrubMs != null -> localizedStringResource(StringsR.string.player_ok_jump_here_back_return)
+                            thumbnailsEnabled -> localizedStringResource(StringsR.string.player_ok_pause_seek_audio_subtitles)
+                            else -> localizedStringResource(StringsR.string.player_ok_pause_10_s_audio_subtitles)
+                        },
+                        color = Color.White.copy(alpha = 0.5f),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(Modifier.width(24.dp))
+                    Text(
+                        text = if (playback.durationMs > 0) "-" + formatTime(playback.durationMs - shownMs) else "",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun LiveSeekBar(playback: PlaybackState) {
+    val fraction = when {
+        playback.isAtLiveEdge -> 1f
+        playback.durationMs > 0L -> (playback.positionMs.toFloat() / playback.durationMs).coerceIn(0f, 1f)
+        else -> 1f
+    }
+    Box(Modifier.fillMaxWidth().height(14.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.fillMaxWidth().height(4.dp).clip(AppShapes.Pill).background(Color.White.copy(alpha = 0.25f)))
+        Box(Modifier.fillMaxWidth(fraction).height(4.dp).clip(AppShapes.Pill).background(AppColors.Accent))
     }
 }
 
@@ -641,7 +732,7 @@ private fun SeekBar(playback: PlaybackState, positionMs: Long) {
 }
 
 @Composable
-private fun StatusOverlay(title: String, message: String, loading: Boolean) {
+private fun StatusOverlay(title: String, message: String, loading: Boolean, isLive: Boolean) {
     Column(
         modifier = Modifier.fillMaxSize().background(AppColors.Background).padding(48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -669,7 +760,14 @@ private fun StatusOverlay(title: String, message: String, loading: Boolean) {
         )
         if (!loading) {
             Spacer(Modifier.height(16.dp))
-            Text(localizedStringResource(StringsR.string.player_press_back_to_pick_another_source), color = Color(0xFFB3B3B3), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = localizedStringResource(
+                    if (isLive) StringsR.string.player_live_press_back_to_return
+                    else StringsR.string.player_press_back_to_pick_another_source,
+                ),
+                color = Color(0xFFB3B3B3),
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 }

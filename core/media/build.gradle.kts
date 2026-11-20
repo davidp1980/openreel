@@ -30,7 +30,11 @@ dependencies {
     implementation(project(":core:domain"))
 
     implementation(libs.media3.exoplayer)
+    implementation(libs.media3.exoplayer.dash)
+    implementation(libs.media3.exoplayer.hls)
+    implementation(libs.media3.datasource.okhttp)
     implementation(libs.media3.common)
+    implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.hilt.android)

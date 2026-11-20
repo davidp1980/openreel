@@ -87,6 +87,8 @@ fun TracksPanel(
     onExternalOff: () -> Unit = {},
     onManualSubtitleSelection: () -> Unit = {},
     onOpenSync: () -> Unit = {},
+    allowExternalSubtitles: Boolean = true,
+    isLive: Boolean = false,
 ) {
     val texts = rememberTexts()
     var tracks by remember(player) { mutableStateOf(player.currentTracks) }
@@ -131,12 +133,14 @@ fun TracksPanel(
             val externalSubtitleText = texts.get(StringsR.string.player_external_subtitle)
             val syncSubtitlesText = texts.get(StringsR.string.player_sync_subtitles_3af0a4)
             val audio = remember(tracks) { audioOptions(tracks, player, texts) }
-            val text = remember(tracks, hasSpanish, externalLabel, syncDetail, appearance) {
+            val text = remember(tracks, hasSpanish, externalLabel, syncDetail, appearance, allowExternalSubtitles) {
                 buildList {
-                    add(externalOption(hasSpanish, texts) { showExternal = true })
-                    if (externalLabel != null) {
-                        add(TrackOption("t_ext_active", externalLabel, externalSubtitleText, selected = true, onSelect = {}))
-                        add(TrackOption("t_sync", syncSubtitlesText, syncDetail, selected = false, onSelect = onOpenSync))
+                    if (allowExternalSubtitles) {
+                        add(externalOption(hasSpanish, texts) { showExternal = true })
+                        if (externalLabel != null) {
+                            add(TrackOption("t_ext_active", externalLabel, externalSubtitleText, selected = true, onSelect = {}))
+                            add(TrackOption("t_sync", syncSubtitlesText, syncDetail, selected = false, onSelect = onOpenSync))
+                        }
                     }
                     addAll(
                         textOptions(
@@ -164,7 +168,11 @@ fun TracksPanel(
             }
         }
         Text(
-            text = if (showExternal || showAppearance) localizedStringResource(StringsR.string.player_back_to_return_to_audio_subtitles) else localizedStringResource(StringsR.string.player_back_to_return_to_the_movie),
+            text = when {
+                showExternal || showAppearance -> localizedStringResource(StringsR.string.player_back_to_return_to_audio_subtitles)
+                isLive -> localizedStringResource(StringsR.string.player_back_to_return_to_live)
+                else -> localizedStringResource(StringsR.string.player_back_to_return_to_the_movie)
+            },
             color = Color.White.copy(alpha = 0.5f),
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
@@ -531,7 +539,7 @@ private fun audioOptions(tracks: Tracks, player: Player, texts: Texts): List<Tra
         for (i in 0 until group.length) {
             if (!group.isTrackSupported(i)) continue
             val f = group.getTrackFormat(i)
-            val language = languageName(f.language)
+            val language = languageName(f.language, texts)
             add(
                 TrackOption(
                     key = "a_${groupIndex}_$i",
@@ -585,7 +593,7 @@ private fun textOptions(
             for (i in 0 until group.length) {
                 if (!group.isTrackSupported(i)) continue
                 val f = group.getTrackFormat(i)
-                val language = languageName(f.language)
+                val language = languageName(f.language, texts)
                 val forced = f.selectionFlags and C.SELECTION_FLAG_FORCED != 0
                 val external = f.id?.contains("ext:") == true
                 add(
@@ -614,8 +622,10 @@ private fun textOptions(
     }
 }
 
-private fun languageName(code: String?): String? {
+private fun languageName(code: String?, texts: Texts): String? {
     if (code.isNullOrBlank() || code == "und") return null
+    if (code.equals("qaa", ignoreCase = true)) return texts.get(StringsR.string.player_audio_original_version)
+    if (code.equals("ads", ignoreCase = true)) return texts.get(StringsR.string.player_audio_description)
     val name = Locale.forLanguageTag(code).getDisplayLanguage(UiLocale)
     if (name.isBlank() || name.equals(code, ignoreCase = true)) return null
     return name.replaceFirstChar { it.titlecase(UiLocale) }

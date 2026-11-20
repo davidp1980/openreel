@@ -3,6 +3,7 @@ package com.shieldstream.tv.data.di
 import com.shieldstream.tv.domain.PrioritizeSourcesUseCase
 import com.shieldstream.tv.domain.RealDebridRepository
 import com.shieldstream.tv.domain.ResolveStreamUseCase
+import com.shieldstream.tv.domain.RtveLivePlaybackResolver
 import com.shieldstream.tv.strings.ResourceResolveStreamTexts
 import com.shieldstream.tv.domain.SettingsRepository
 import com.shieldstream.tv.domain.AllDebridAuthRepository
@@ -47,4 +48,8 @@ object UseCaseModule {
         realDebrid: RealDebridRepository,
         settings: SettingsRepository,
     ): ValidateTokenUseCase = ValidateTokenUseCase(realDebrid, settings)
+
+    @Provides
+    @Singleton
+    fun provideRtveLivePlaybackResolver(): RtveLivePlaybackResolver = RtveLivePlaybackResolver()
 }
