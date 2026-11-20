@@ -676,7 +676,6 @@ class DetailsViewModel @Inject constructor(
             .filterIndexed { index, s ->
                 index == 0 || s.resolveUrl == null || s.isCached || s.debrid == ITHIL_ALLDEBRID
             }
-            .take(MAX_QUEUE)
         if (queue.isEmpty()) {
             updateContent {
                 it.copy(
@@ -733,7 +732,6 @@ class DetailsViewModel @Inject constructor(
 
     private companion object {
         const val STARTUP_TRACE_TAG = "StartupTrace"
-        const val MAX_QUEUE = 30
         const val MIN_CACHED_TO_START = 3
     }
 }

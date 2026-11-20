@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.38] - 2026-11-20
+
+### Changed
+
+- **Try all eligible sources on playback failover:** removed the 8-attempt cap in `SourceFailoverController` and the 30-source queue cap in `DetailsViewModel` so playback keeps trying all available sources until one works (cancellable anytime with Back).
+- **Trust filename ranking for Spanish-first profiles:** skipped mid-playback audio track probing and automatic source switching when **Spanish only** is off, relying on filename-based prioritization and ExoPlayer's preferred Spanish audio language selection (while keeping strict audio verification active for **Spanish only** profiles).
+
 ## [1.0.37] - 2026-11-20
 
 ### Fixed

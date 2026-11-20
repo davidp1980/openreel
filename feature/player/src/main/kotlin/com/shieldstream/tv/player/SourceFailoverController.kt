@@ -47,9 +47,7 @@ internal class SourceFailoverController(
     private var allNotCached = true
 
     fun resolve(from: Int): Flow<SourceResolutionEvent> = flow {
-        var attempts = 0
         for (index in from until queue.size) {
-            if (attempts >= MAX_ATTEMPTS) break
             val source = queue[index]
             var outcome: ResolveState? = null
             resolveStreamUseCase(source).collect { state ->
@@ -71,7 +69,6 @@ internal class SourceFailoverController(
                     return@flow
                 }
                 is ResolveState.Failed -> {
-                    if (!result.blocked) attempts++
                     lastQueueError = result.message
                     if (!result.notCached) allNotCached = false
                 }
@@ -102,29 +99,23 @@ internal class SourceFailoverController(
     }
 
     fun checkSpanishAudio(playbackState: Int, tracks: Tracks): SourceFailoverAction {
-        if (spanishChecked || !spanishFirst) return SourceFailoverAction.Ignored
+        if (spanishChecked || !spanishOnly) return SourceFailoverAction.Ignored
         val audio = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
             .flatMap { g -> (0 until g.length).filter { g.isTrackSupported(it) }.map { g.getTrackFormat(it).language?.lowercase() } }
         if (audio.isEmpty() && playbackState != Player.STATE_READY) return SourceFailoverAction.Ignored
         spanishChecked = true
         val source = queue.getOrNull(queueIndex) ?: return SourceFailoverAction.Ignored
-        if (!spanishOnly && source.spanishAudioScore == 0) return SourceFailoverAction.Ignored
         val known = audio.filterNotNull().filter { it != "und" && it != "mul" }
-        val acceptUntagged = known.isEmpty() && (!spanishOnly || source.spanishAudioScore >= 3)
+        val acceptUntagged = known.isEmpty() && source.spanishAudioScore >= 3
         if (known.any { it == "es" || it.startsWith("es-") || it == "spa" } || acceptUntagged) {
             return SourceFailoverAction.AudioAccepted
         }
         Log.i("PlayerVM", "Sin audio en castellano (${known.distinct()}): ${source.title.take(80)}")
         val next = (queueIndex + 1 until queue.size).firstOrNull { queue[it].spanishAudioScore > 0 }
         if (next == null || spanishSkips >= MAX_SPANISH_SKIPS) {
-            return if (spanishOnly) {
-                SourceFailoverAction.FatalError(texts.get(StringsR.string.player_no_sources_with_verified_spanish_audio_available))
-            } else {
-                SourceFailoverAction.Notice(texts.get(StringsR.string.player_this_source_has_no_spanish_audio))
-            }
+            return SourceFailoverAction.FatalError(texts.get(StringsR.string.player_no_sources_with_verified_spanish_audio_available))
         }
         spanishSkips++
-        if (!spanishOnly && spanishFallback == null) spanishFallback = queueIndex
         return SourceFailoverAction.SwitchSource(
             next,
             texts.get(StringsR.string.player_no_spanish_audio_trying_another_source),
@@ -162,7 +153,6 @@ internal class SourceFailoverController(
     }
 
     private companion object {
-        const val MAX_ATTEMPTS = 8
         const val MAX_SPANISH_SKIPS = 3
         const val SLATE_MAX_MS = 4 * 60_000L
         const val SLATE_MIN_BYTES = 150_000_000L

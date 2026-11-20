@@ -26,14 +26,14 @@ import org.junit.Test
 class SourceFailoverControllerTest {
 
     @Test
-    fun `non-blocked failures stop after the attempt limit`() = runTest {
-        val fixture = Fixture(List(9) { source(id = "$it") })
+    fun `resolve tries all sources in queue before failing`() = runTest {
+        val fixture = Fixture(List(12) { source(id = "$it") })
         fixture.behavior = { source -> flowOf(ResolveState.Failed(source.id)) }
 
         val events = fixture.controller.resolve(0).toList()
 
-        assertEquals((0 until 8).map { "$it" }, fixture.requested)
-        assertEquals("none worked\n7", events.filterIsInstance<SourceResolutionEvent.Error>().single().message)
+        assertEquals((0 until 12).map { "$it" }, fixture.requested)
+        assertEquals("none worked\n11", events.filterIsInstance<SourceResolutionEvent.Error>().single().message)
     }
 
     @Test
@@ -73,24 +73,16 @@ class SourceFailoverControllerTest {
     }
 
     @Test
-    fun `failed Spanish candidate returns to the original working source`() = runTest {
+    fun `Spanish-first trusts filename ranking and does not interrupt playback`() = runTest {
         val fixture = Fixture(
             listOf(source(id = "original", title = "Spanish original"), source(id = "candidate", title = "Spanish")),
             spanishFirst = true,
         )
-        fixture.behavior = { source ->
-            if (source.id == "candidate") flowOf(ResolveState.Failed("unavailable"))
-            else flowOf(ResolveState.Ready("original-url"))
-        }
+        fixture.behavior = { flowOf(ResolveState.Ready("original-url")) }
         fixture.controller.resolve(0).toList()
 
         val action = fixture.controller.checkSpanishAudio(Player.STATE_READY, audioTracks("en"))
-        assertEquals(SourceFailoverAction.SwitchSource(1, "switching Spanish"), action)
-        val events = fixture.controller.resolve(1).toList()
-
-        val fallback = events.filterIsInstance<SourceResolutionEvent.Fallback>().single()
-        assertEquals(0, fallback.index)
-        assertEquals("fallback", fallback.notice)
+        assertEquals(SourceFailoverAction.Ignored, action)
     }
 
     @Test
