@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.32] - 2026-11-20
+
+### Fixed
+
+- **Live TV overlapping audio / duplicate player sessions:** prevented `onStart()` from starting a second `ExoPlayer` before initial `start()`, always release any active player before creating a new one, stop playback immediately when leaving `PlayerScreen`, and ignore stale callbacks from replaced players.
+
 ## [1.0.31] - 2026-11-20
 
 ### Changed
