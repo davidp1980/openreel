@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.26] - 2026-11-20
+
+### Changed
+
+- **Complete OpenReel branding:** replaced the remaining internal themes, string resource IDs, Gradle project name, documentation, and screenshots with OpenReel branding.
+- **New OpenReel artwork:** updated the app logo, Android TV banner, launcher icons, and phone configuration logo with a dedicated minimalist OpenReel mark.
+- **Profile PIN hash prefix:** updated the PIN hash salt prefix to `openreel-pin:` (existing profile PINs need to be configured again).
+
 ## [1.0.25] - 2026-11-15
 
 ### Changed
