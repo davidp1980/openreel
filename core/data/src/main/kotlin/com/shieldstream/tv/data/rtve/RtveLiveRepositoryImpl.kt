@@ -19,6 +19,7 @@ class RtveLiveRepositoryImpl internal constructor(
     private val nowMillis: () -> Long,
     private val tdtHttp: TdtTextClient = TdtTextClient { _, _ -> throw java.io.IOException("TDT client not configured") },
     private val tdtParser: TdtLiveParser = TdtLiveParser(),
+    private val fastParser: FastM3uParser = FastM3uParser(),
 ) : LiveTvRepository {
 
     @Inject
@@ -28,6 +29,7 @@ class RtveLiveRepositoryImpl internal constructor(
         nowMillis = System::currentTimeMillis,
         tdtHttp = tdtHttp,
         tdtParser = TdtLiveParser(json),
+        fastParser = FastM3uParser(),
     )
 
     private data class CachedDoc(
@@ -106,14 +108,82 @@ class RtveLiveRepositoryImpl internal constructor(
     }
 
     override suspend fun loadOpenSections(forceRefresh: Boolean): List<LiveTvSection> {
-        val raw = fetchCached(
-            url = TDT_TV_JSON_URL,
-            freshForMillis = TDT_FRESH_MS,
-            staleFallbackMillis = TDT_STALE_FALLBACK_MS,
-            forceRefresh = forceRefresh,
-            fetcher = tdtHttp::fetch,
+        val feeds = listOf(
+            OpenFeed.Tdt(TDT_TV_JSON_URL),
+            OpenFeed.Fast(
+                url = SAMSUNG_TV_PLUS_ES_URL,
+                provider = "Samsung TV Plus",
+            ),
+            OpenFeed.Fast(
+                url = PLUTO_TV_ES_URL,
+                provider = "Pluto TV",
+            ),
+            OpenFeed.Fast(
+                url = PLEX_TV_ES_URL,
+                provider = "Plex TV",
+                dedicatedSectionId = "fast_plex",
+                dedicatedSectionTitle = "Plex TV",
+            ),
         )
-        return withContext(Dispatchers.Default) { tdtParser.parseSections(raw) }
+
+        val fetched = feeds.mapConcurrent(concurrency = CONCURRENCY) { feed ->
+            try {
+                val raw = fetchCached(
+                    url = feed.url,
+                    freshForMillis = TDT_FRESH_MS,
+                    staleFallbackMillis = TDT_STALE_FALLBACK_MS,
+                    forceRefresh = forceRefresh,
+                    fetcher = tdtHttp::fetch,
+                )
+                Result.success(feed to raw)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Result.failure(error)
+            }
+        }
+
+        val successes = fetched.mapNotNull { it.getOrNull() }
+        if (successes.isEmpty() && fetched.all { it.isFailure }) {
+            throw fetched.first().exceptionOrNull()!!
+        }
+
+        return withContext(Dispatchers.Default) {
+            val tdtSections = successes
+                .firstOrNull { it.first is OpenFeed.Tdt }
+                ?.let { (_, raw) ->
+                    runCatching { tdtParser.parseSections(raw) }.getOrDefault(emptyList())
+                }
+                .orEmpty()
+
+            val fastSources = successes.mapNotNull { (feed, raw) ->
+                (feed as? OpenFeed.Fast)?.let {
+                    FastPlaylistSource(
+                        provider = it.provider,
+                        raw = raw,
+                        dedicatedSectionId = it.dedicatedSectionId,
+                        dedicatedSectionTitle = it.dedicatedSectionTitle,
+                    )
+                }
+            }
+            val fastSections = if (fastSources.isNotEmpty()) {
+                fastParser.parseAndOrganize(fastSources)
+            } else {
+                emptyList()
+            }
+
+            tdtSections + fastSections
+        }
+    }
+
+    private sealed class OpenFeed(val url: String) {
+        class Tdt(url: String) : OpenFeed(url)
+        class Fast(
+            url: String,
+            val provider: String,
+            val dedicatedSectionId: String? = null,
+            val dedicatedSectionTitle: String? = null,
+        ) : OpenFeed(url)
     }
 
     private suspend fun fetchCached(
@@ -151,6 +221,12 @@ class RtveLiveRepositoryImpl internal constructor(
         const val INDEX_APPS_URL = "https://www.rtve.es/play/index_apps.json"
         const val REMOTE_CONFIG_TV_URL = "https://www.rtve.es/m/configs/rtve_play/2026/estructuraAndroidTV2.json"
         const val TDT_TV_JSON_URL = "https://www.tdtchannels.com/lists/tv.json"
+        const val SAMSUNG_TV_PLUS_ES_URL =
+            "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/samsungtvplus_es.m3u"
+        const val PLUTO_TV_ES_URL =
+            "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/plutotv_es.m3u"
+        const val PLEX_TV_ES_URL =
+            "https://raw.githubusercontent.com/BuddyChewChew/app-m3u-generator/main/playlists/plex_es.m3u"
         const val HOME_FRESH_MS = 2 * 60 * 1_000L
         const val LIVE_FRESH_MS = 45_000L
         const val CONFIG_FRESH_MS = 60 * 60 * 1_000L

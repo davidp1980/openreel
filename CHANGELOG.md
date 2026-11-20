@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.36] - 2026-11-20
+
+### Added
+
+- **FAST Live TV channels (Samsung TV Plus, Pluto TV, Plex TV):** integrated public Spanish FAST M3U playlists alongside RTVE and TDT, parsed concurrently with per-feed fault tolerance, ETag caching, cross-provider fallback URLs, and unified thematic sections (**Cine**, **Series**, **Entretenimiento**, **Documentales y Crimen**, **Deportes**, **Noticias**, **Infantil y Anime**, **Música**, and **Plex TV**).
+- **Live TV section channel counts:** added subtle channel count badges next to every Live TV section header.
+
+### Changed
+
+- **Restored full TDT live directory:** removed the 1.0.35 channel caps and regional/international allowlists so all playable free-to-air channels from `tdtchannels.com` are available, organized into **TDT Nacionales**, **TDT Autonómicas**, and **TDT Internacionales**.
+
 ## [1.0.35] - 2026-11-20
 
 ### Changed

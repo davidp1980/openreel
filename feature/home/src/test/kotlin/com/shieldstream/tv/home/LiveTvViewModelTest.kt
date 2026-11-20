@@ -174,4 +174,57 @@ class LiveTvViewModelTest {
         assertNull(blocked)
         assertEquals("Geo-blocked", viewModel.notice.value)
     }
+
+    @Test
+    fun `silent refresh preserves both tdt and fast sections when open load fails`() = runTest {
+        val main = listOf(
+            LiveTvSection(
+                id = "main",
+                title = "Live now",
+                channels = listOf(LiveChannel(id = "1", assetId = "10", title = "La 1")),
+            ),
+        )
+        val open = listOf(
+            LiveTvSection(
+                id = "tdt_nacionales",
+                title = "TDT Nacionales",
+                channels = listOf(
+                    LiveChannel(
+                        id = "tdt_trece",
+                        title = "TRECE",
+                        directUrls = listOf("https://live.example.com/trece.m3u8"),
+                        provider = "TDT",
+                    ),
+                ),
+            ),
+            LiveTvSection(
+                id = "fast_cine",
+                title = "Cine",
+                channels = listOf(
+                    LiveChannel(
+                        id = "fast_cine_samsung_top",
+                        title = "Top Cine",
+                        directUrls = listOf("https://jmp2.uk/stvp-top"),
+                        provider = "Samsung TV Plus",
+                    ),
+                ),
+            ),
+        )
+        var failOpen = false
+        val repository = mockk<LiveTvRepository> {
+            coEvery { loadMainSections(any()) } returns main
+            coEvery { loadThematicChannels(any()) } returns emptyList()
+            coEvery { loadOpenSections(any()) } answers {
+                if (failOpen) throw IOException("offline") else open
+            }
+        }
+        val viewModel = LiveTvViewModel(repository, RtveLivePlaybackResolver { 1_000L }, texts)
+
+        viewModel.activate()
+        failOpen = true
+        viewModel.refreshSilent()
+
+        val content = viewModel.uiState.value as LiveTvUiState.Content
+        assertEquals(listOf("main", "tdt_nacionales", "fast_cine"), content.sections.map { it.id })
+    }
 }

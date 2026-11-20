@@ -125,7 +125,7 @@ class LiveTvViewModel @Inject constructor(
         loadJob = viewModelScope.launch {
             val previousSections = (_uiState.value as? LiveTvUiState.Content)?.sections.orEmpty()
             val previousThematic = previousSections.firstOrNull { it.id == THEMATIC_SECTION_ID }
-            val previousOpen = previousSections.filter { it.id.startsWith(OPEN_SECTION_PREFIX) }
+            val previousOpen = previousSections.filter { isOpenSectionId(it.id) }
             if (!silent) {
                 _uiState.update { current ->
                     (current as? LiveTvUiState.Content)?.copy(refreshing = true) ?: LiveTvUiState.Loading
@@ -209,5 +209,9 @@ class LiveTvViewModel @Inject constructor(
     internal companion object {
         const val THEMATIC_SECTION_ID = "rtve_thematic_channels"
         const val OPEN_SECTION_PREFIX = "tdt_"
+        const val FAST_SECTION_PREFIX = "fast_"
+
+        internal fun isOpenSectionId(id: String): Boolean =
+            id.startsWith(OPEN_SECTION_PREFIX) || id.startsWith(FAST_SECTION_PREFIX)
     }
 }

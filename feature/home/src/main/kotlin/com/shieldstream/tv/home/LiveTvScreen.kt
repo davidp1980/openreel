@@ -233,11 +233,24 @@ fun LiveTvScreen(
                                     val sectionTitle = section.title.ifBlank {
                                         localizedStringResource(StringsR.string.live_tv_section_now)
                                     }
-                                    Text(
-                                        text = sectionTitle,
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    ) {
+                                        Text(
+                                            text = sectionTitle,
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        )
+                                        Text(
+                                            text = section.channels.size.toString(),
+                                            color = Color.White.copy(alpha = 0.65f),
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            modifier = Modifier
+                                                .background(Color.White.copy(alpha = 0.1f), AppShapes.Pill)
+                                                .padding(horizontal = 8.dp, vertical = 2.dp),
+                                        )
+                                    }
                                     Spacer(Modifier.height(12.dp))
                                 }
                                 val rows = section.channels.chunked(GRID_COLUMNS)
