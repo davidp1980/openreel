@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.27] - 2026-11-20
+
+### Changed
+
+- **Panoramic 16:9 TV banner:** redesigned the TV launcher banner with a widescreen horizontal OpenReel mark and wordmark across all densities (`mdpi` through `xxxhdpi`) plus a `1280×720` Fire TV master asset.
+- **Fire TV / Leanback launcher metadata:** declared `android:banner` and `android:logo` on both the application and `MainActivity` for better compatibility across TV launchers.
+
 ## [1.0.26] - 2026-11-20
 
 ### Changed
