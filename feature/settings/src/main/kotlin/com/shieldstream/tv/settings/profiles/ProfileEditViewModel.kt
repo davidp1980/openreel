@@ -86,7 +86,7 @@ class ProfileEditViewModel @Inject constructor(
             profile = it.profile.copy(
                 kids = kids,
                 spanishFirst = if (kids) true else it.profile.spanishFirst,
-                spanishOnlySources = if (kids) true else it.profile.spanishOnlySources,
+                spanishOnlySources = kids,
             ),
             confirmDelete = false,
         )

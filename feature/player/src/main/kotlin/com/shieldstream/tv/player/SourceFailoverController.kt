@@ -110,7 +110,8 @@ internal class SourceFailoverController(
         val source = queue.getOrNull(queueIndex) ?: return SourceFailoverAction.Ignored
         if (!spanishOnly && source.spanishAudioScore == 0) return SourceFailoverAction.Ignored
         val known = audio.filterNotNull().filter { it != "und" && it != "mul" }
-        if (known.any { it == "es" || it.startsWith("es-") || it == "spa" } || (!spanishOnly && known.isEmpty())) {
+        val acceptUntagged = known.isEmpty() && (!spanishOnly || source.spanishAudioScore >= 3)
+        if (known.any { it == "es" || it.startsWith("es-") || it == "spa" } || acceptUntagged) {
             return SourceFailoverAction.AudioAccepted
         }
         Log.i("PlayerVM", "Sin audio en castellano (${known.distinct()}): ${source.title.take(80)}")

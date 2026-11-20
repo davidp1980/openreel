@@ -1293,8 +1293,11 @@ private fun SourcesPanel(
     val pending = (state.sources as? SourcesState.Ready)?.pending.orEmpty()
     val unavailable = (state.sources as? SourcesState.Ready)?.unavailable.orEmpty() +
         pending.associateWith { localizedStringResource(StringsR.string.details_searching) }
-    val eligibleSources = (if (showAll) allSources else state.sourceExclusions.filter(allSources))
-        .filter { !spanishOnly || it.advertisesSpanishAudio }
+    val eligibleSources = if (showAll) {
+        allSources
+    } else {
+        state.sourceExclusions.filter(allSources).filter { !spanishOnly || it.advertisesSpanishAudio }
+    }
     val providers = (eligibleSources.map { it.provider }.filter { it.isNotBlank() } + unavailable.keys).distinct()
     var selectedProvider by remember { mutableStateOf<String?>(null) }
     val activeProvider = selectedProvider?.takeIf { it in providers }
@@ -1362,7 +1365,7 @@ private fun SourcesPanel(
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
                     )
-                    if (!state.sourceExclusions.isEmpty) {
+                    if (!state.sourceExclusions.isEmpty || spanishOnly) {
                         ShowAllChip(showAll = showAll, onClick = { showAll = !showAll })
                     }
                 }
@@ -1476,7 +1479,7 @@ private fun SourceRow(source: StreamSource, blocked: Boolean, onClick: () -> Uni
             // Primary line: what the viewer chooses by (format, size, languages).
             // Secondary line: torrent health and the raw release name.
             Row(verticalAlignment = Alignment.CenterVertically) {
-                SourceMediaBadges(source)
+                SourceMediaBadges(source, onLightSurface = focused)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = buildString {

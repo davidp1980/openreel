@@ -27,17 +27,21 @@ import com.shieldstream.tv.model.Quality
 import com.shieldstream.tv.model.StreamSource
 
 @Composable
-fun SourceMediaBadges(source: StreamSource, modifier: Modifier = Modifier) {
+fun SourceMediaBadges(
+    source: StreamSource,
+    modifier: Modifier = Modifier,
+    onLightSurface: Boolean = false,
+) {
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         if (source.quality != Quality.UNKNOWN) {
-            MediaBadge(source.quality.label, AppIcons.Movie, BadgeColors.Neutral)
+            MediaBadge(source.quality.label, AppIcons.Movie, BadgeColors.Neutral, onLightSurface)
         }
         if (source.hdrType != HdrType.SDR) {
-            MediaBadge(hdrLabel(source.hdrType), hdrIcon(source.hdrType), hdrColor(source.hdrType))
+            MediaBadge(hdrLabel(source.hdrType), hdrIcon(source.hdrType), hdrColor(source.hdrType), onLightSurface)
         }
-        source.videoCodec?.let { MediaBadge(it.label, AppIcons.Memory, BadgeColors.Codec) }
-        source.audioCodecs.forEach { MediaBadge(audioBadgeLabel(it), AppIcons.Volume, BadgeColors.Neutral) }
-        if (source.softwareDecode) MediaBadge("CPU", AppIcons.Memory, BadgeColors.Software)
+        source.videoCodec?.let { MediaBadge(it.label, AppIcons.Memory, BadgeColors.Codec, onLightSurface) }
+        source.audioCodecs.forEach { MediaBadge(audioBadgeLabel(it), AppIcons.Volume, BadgeColors.Neutral, onLightSurface) }
+        if (source.softwareDecode) MediaBadge("CPU", AppIcons.Memory, BadgeColors.Software, onLightSurface)
     }
 }
 
@@ -57,19 +61,45 @@ fun PlaybackMediaBadges(info: PlaybackVideoInfo, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun MediaBadge(text: String, icon: ImageVector, accent: Color) {
+private fun MediaBadge(
+    text: String,
+    icon: ImageVector,
+    accent: Color,
+    onLightSurface: Boolean = false,
+) {
+    val isWarning = accent == BadgeColors.Software
+    val bg = when {
+        onLightSurface && isWarning -> BadgeColors.SoftwareOnLight.copy(alpha = 0.16f)
+        onLightSurface -> Color.Black.copy(alpha = 0.09f)
+        else -> accent.copy(alpha = 0.20f)
+    }
+    val borderColor = when {
+        onLightSurface && isWarning -> BadgeColors.SoftwareOnLight.copy(alpha = 0.55f)
+        onLightSurface -> Color.Black.copy(alpha = 0.28f)
+        else -> accent.copy(alpha = 0.58f)
+    }
+    val iconTint = when {
+        onLightSurface && isWarning -> BadgeColors.SoftwareOnLight
+        onLightSurface -> BadgeColors.OnLight
+        else -> accent
+    }
+    val textColor = when {
+        onLightSurface && isWarning -> BadgeColors.SoftwareOnLight
+        onLightSurface -> BadgeColors.OnLight
+        else -> Color.White
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .background(accent.copy(alpha = 0.20f), AppShapes.Badge)
-            .border(1.dp, accent.copy(alpha = 0.58f), AppShapes.Badge)
+            .background(bg, AppShapes.Badge)
+            .border(1.dp, borderColor, AppShapes.Badge)
             .padding(horizontal = 6.dp, vertical = 3.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(12.dp))
+        Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(12.dp))
         Spacer(Modifier.width(4.dp))
         Text(
             text = text,
-            color = Color.White,
+            color = textColor,
             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
         )
     }
@@ -97,4 +127,6 @@ private object BadgeColors {
     val Codec = Neutral
     val Hardware = Neutral
     val Software = AppColors.Warning
+    val OnLight = Color(0xFF141418)
+    val SoftwareOnLight = Color(0xFFB45309)
 }

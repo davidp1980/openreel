@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.37] - 2026-11-20
+
+### Fixed
+
+- **Source selector badge legibility on focus:** adapted `SourceMediaBadges` (`4K`, `1080p`, `DV`, `HDR`, `HEVC`, `Atmos`, `CPU`) to use high-contrast dark text, icons, and borders when a source row is focused on its white highlight background.
+- **Spanish audio filtering & untagged tracks:** disabling Kids mode in Profile Edit now clears `spanishOnlySources` instead of leaving it stuck on; **Spanish first** now appears ahead of **Spanish only**; **Show all** in the source picker now also reveals non-Spanish sources for manual selection; and Spanish-only verification no longer rejects untagged (`und`) audio tracks when the release explicitly advertises Castellano.
+
 ## [1.0.36] - 2026-11-20
 
 ### Added

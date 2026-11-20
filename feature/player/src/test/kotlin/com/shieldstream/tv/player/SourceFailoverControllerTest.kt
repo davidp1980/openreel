@@ -105,6 +105,13 @@ class SourceFailoverControllerTest {
     }
 
     @Test
+    fun `Spanish-only accepts untagged audio when release explicitly advertises Castellano`() {
+        val fixture = Fixture(listOf(source(title = "Pelicula 1080p Castellano")), spanishOnly = true, spanishFirst = true)
+
+        assertEquals(SourceFailoverAction.AudioAccepted, fixture.controller.checkSpanishAudio(Player.STATE_READY, audioTracks("und")))
+    }
+
+    @Test
     fun `short addon error video switches once to the next source`() = runTest {
         val fixture = Fixture(
             listOf(

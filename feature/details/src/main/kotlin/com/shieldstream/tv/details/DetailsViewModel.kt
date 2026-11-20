@@ -112,8 +112,10 @@ sealed interface DetailsEvent {
 private fun DetailsUiState.Content.eligibleSources(
     sources: List<StreamSource>,
     includeExcluded: Boolean = false,
-): List<StreamSource> = sources.filter {
-    (includeExcluded || !sourceExclusions.excludes(it)) && (!spanishOnly || it.advertisesSpanishAudio)
+): List<StreamSource> = if (includeExcluded) {
+    sources
+} else {
+    sources.filter { !sourceExclusions.excludes(it) && (!spanishOnly || it.advertisesSpanishAudio) }
 }
 
 @HiltViewModel

@@ -169,14 +169,14 @@ fun ProfileEditScreen(
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OptionChip(
-                            text = if (profile.spanishOnlySources) localizedStringResource(StringsR.string.settings_spanish_only_on) else localizedStringResource(StringsR.string.settings_spanish_only_off),
-                            highlighted = profile.spanishOnlySources,
-                            onClick = { viewModel.setSpanishOnly(!profile.spanishOnlySources) },
-                        )
-                        OptionChip(
                             text = if (profile.spanishFirst || profile.spanishOnlySources) localizedStringResource(StringsR.string.settings_spanish_first_on) else localizedStringResource(StringsR.string.settings_spanish_first_off),
                             highlighted = profile.spanishFirst || profile.spanishOnlySources,
                             onClick = { if (!profile.spanishOnlySources) viewModel.setSpanishFirst(!profile.spanishFirst) },
+                        )
+                        OptionChip(
+                            text = if (profile.spanishOnlySources) localizedStringResource(StringsR.string.settings_spanish_only_on) else localizedStringResource(StringsR.string.settings_spanish_only_off),
+                            highlighted = profile.spanishOnlySources,
+                            onClick = { viewModel.setSpanishOnly(!profile.spanishOnlySources) },
                         )
                     }
                     Spacer(Modifier.height(12.dp))
