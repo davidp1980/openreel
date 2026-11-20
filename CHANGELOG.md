@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.30] - 2026-11-20
+
+### Added
+
+- **Live TV channel zapping:** press `▲` / `▼` (or hardware `CH+` / `CH-` keys) while watching Live TV to zap directly across playable channels with rapid-zap debouncing.
+- **Live controls & channel drawer:** press `OK` during zapping playback to open the live action bar (Pause/Play, Channels list, Audio & subtitles, and Jump to live), or press `Guide` / `Channels` to jump directly via a side channel list drawer.
+- **Last channel focus restore:** returning from the Live TV player restores focus and scroll position onto the channel you zapped to.
+
 ## [1.0.29] - 2026-11-20
 
 ### Added
