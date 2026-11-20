@@ -303,6 +303,130 @@ class PlayerViewModelLiveTest {
         fixture.viewModel.viewModelScope.cancel()
     }
 
+    @Test
+    fun `onStart before start does not create duplicate live players`() = runBlocking {
+        val channels = sampleLineup()
+        val players = FakeLivePlayers(Tracks.EMPTY)
+        val fixture = liveFixture(
+            players = players,
+            sources = channels[0].sources,
+            licenseProvider = LiveDrmLicenseProvider { "https://drm.axinom.test/license" },
+            widevineSupported = true,
+            liveChannels = channels,
+            liveChannelIndex = 0,
+        )
+
+        // Compose's LifecycleEventObserver dispatches ON_START before LaunchedEffect calls start().
+        fixture.viewModel.onStart()
+        fixture.viewModel.start()
+        yield()
+
+        assertEquals(1, players.createdCount)
+        assertEquals(1, players.singleArgItems.size)
+        verify(exactly = 0) { players.player(0).release() }
+
+        fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `onStop followed by onStart releases old player and recreates a single session`() = runBlocking {
+        val channels = sampleLineup()
+        val players = FakeLivePlayers(Tracks.EMPTY)
+        val fixture = liveFixture(
+            players = players,
+            sources = channels[0].sources,
+            licenseProvider = LiveDrmLicenseProvider { "https://drm.axinom.test/license" },
+            widevineSupported = true,
+            liveChannels = channels,
+            liveChannelIndex = 0,
+        )
+
+        fixture.viewModel.onStart()
+        fixture.viewModel.start()
+        yield()
+        assertEquals(1, players.createdCount)
+
+        fixture.viewModel.onStop()
+        verify(exactly = 1) { players.player(0).release() }
+
+        fixture.viewModel.onStart()
+        yield()
+        assertEquals(2, players.createdCount)
+        assertEquals(2, players.singleArgItems.size)
+
+        fixture.viewModel.onStop()
+        verify(exactly = 1) { players.player(1).release() }
+        fixture.viewModel.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `onStop during zap debounce resumes cleanly on the selected channel without leaking`() = runTest {
+        val channels = sampleLineup()
+        val players = FakeLivePlayers(Tracks.EMPTY)
+        val fixture = liveFixture(
+            players = players,
+            sources = channels[0].sources,
+            licenseProvider = LiveDrmLicenseProvider { "https://drm.axinom.test/license" },
+            widevineSupported = true,
+            liveChannels = channels,
+            liveChannelIndex = 0,
+        )
+
+        fixture.viewModel.onStart()
+        fixture.viewModel.start()
+        runCurrent()
+        assertEquals(1, players.createdCount)
+
+        fixture.viewModel.zapLiveChannel(+1)
+        fixture.viewModel.onStop()
+        verify(exactly = 1) { players.player(0).release() }
+
+        fixture.viewModel.onStart()
+        runCurrent()
+
+        assertEquals(1, fixture.viewModel.liveChannelIndex.value)
+        assertEquals("24h", fixture.viewModel.title.value)
+        assertEquals(2, players.createdCount)
+        assertEquals("https://ztnr.rtve.es/ztnr/123.m3u8", players.singleArgItems[1].localConfiguration?.uri.toString())
+
+        fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `stale player error after zapping does not switch or create another player`() = runTest {
+        val channels = sampleLineup()
+        val players = FakeLivePlayers(Tracks.EMPTY)
+        val fixture = liveFixture(
+            players = players,
+            sources = channels[0].sources,
+            licenseProvider = LiveDrmLicenseProvider { "https://drm.axinom.test/license" },
+            widevineSupported = true,
+            liveChannels = channels,
+            liveChannelIndex = 0,
+        )
+
+        fixture.viewModel.start()
+        runCurrent()
+        fixture.viewModel.selectLiveChannel(1, immediate = true)
+        runCurrent()
+        assertEquals(2, players.createdCount)
+
+        players.listener(0).onPlayerError(
+            PlaybackException("stale io error", null, PlaybackException.ERROR_CODE_IO_UNSPECIFIED),
+        )
+        runCurrent()
+
+        assertEquals(2, players.createdCount)
+        assertEquals(2, players.singleArgItems.size)
+        assertEquals(1, fixture.viewModel.liveChannelIndex.value)
+        assertEquals("24h", fixture.viewModel.title.value)
+
+        fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
+    }
+
     private fun sampleLineup(): List<LiveChannelEntry> = listOf(
         LiveChannelEntry(
             key = "1_999",
@@ -481,6 +605,7 @@ class PlayerViewModelLiveTest {
         val startPositionItems = mutableListOf<Pair<MediaItem, Long>>()
         private val listeners = mutableListOf<Player.Listener?>()
         private val instances = mutableListOf<ExoPlayer>()
+        val createdCount: Int get() = instances.size
 
         fun create(): ExoPlayer {
             val player = mockk<ExoPlayer>(relaxed = true)

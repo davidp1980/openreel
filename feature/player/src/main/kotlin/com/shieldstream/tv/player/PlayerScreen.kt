@@ -162,7 +162,10 @@ fun PlayerScreen(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.onStop()
+        }
     }
 
     val playback = rememberPlaybackState(player)

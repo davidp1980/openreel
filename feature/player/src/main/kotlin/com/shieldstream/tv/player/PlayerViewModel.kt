@@ -183,6 +183,7 @@ class PlayerViewModel @Inject constructor(
     private var playerGeneration = 0L
     private var playerCreationJob: Job? = null
     private var resolveJob: Job? = null
+    private var switchJob: Job? = null
     private var zapJob: Job? = null
     private var activeLiveChannelKey: String? = liveChannels.getOrNull(_liveChannelIndex.value)?.key
     private var earlyPreparationPending: ExoPlayer? = null
@@ -239,9 +240,23 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun releasePlayer(player: ExoPlayer) {
+        player.playWhenReady = false
         dialogueBoostController?.close()
         dialogueBoostController = null
         player.release()
+    }
+
+    private fun releaseActivePlayer() {
+        val current = _player.value
+        _player.value = null
+        _videoInfo.value = null
+        current?.let(::releasePlayer)
+    }
+
+    private fun replaceActivePlayer(next: ExoPlayer) {
+        val previous = _player.value
+        _player.value = next
+        if (previous != null && previous !== next) releasePlayer(previous)
     }
 
     fun start() {
@@ -289,15 +304,15 @@ class PlayerViewModel @Inject constructor(
     private fun tuneLiveChannel(channel: LiveChannelEntry) {
         val currentBusy = _player.value != null || playerCreationJob?.isActive == true || resolveJob?.isActive == true
         if (activeLiveChannelKey == channel.key && currentBusy) return
+        switchJob?.cancel()
+        switchJob = null
         resolveJob?.cancel()
         resolveJob = null
         playerCreationJob?.cancel()
         playerCreationJob = null
         playerGeneration++
         earlyPreparationPending = null
-        _player.value?.let(::releasePlayer)
-        _player.value = null
-        _videoInfo.value = null
+        releaseActivePlayer()
         activeLiveChannelKey = channel.key
         queueSnapshot = channel.sources
         sourceFailover = createSourceFailover(queueSnapshot)
@@ -522,15 +537,22 @@ class PlayerViewModel @Inject constructor(
         action: SourceFailoverAction.SwitchSource,
         savePosition: Boolean = false,
     ) {
+        if (_player.value !== player) return
+        val generation = playerGeneration
         action.notice?.let { _notice.value = it }
-        if (savePosition) player.pause()
-        viewModelScope.launch {
+        player.playWhenReady = false
+        switchJob?.cancel()
+        switchJob = viewModelScope.launch {
+            if (generation != playerGeneration || _player.value !== player) return@launch
             if (savePosition) {
                 saveProgress()
                 resumePositionMs = player.currentPosition
             }
+            if (_player.value === player) {
+                _player.value = null
+                _videoInfo.value = null
+            }
             releasePlayer(player)
-            if (_player.value === player) _player.value = null
             resolvedUrl = null
             playFrom(action.index)
         }
@@ -603,6 +625,10 @@ class PlayerViewModel @Inject constructor(
         subtitleCoordinator.onPlaybackStopped()
         zapJob?.cancel()
         zapJob = null
+        resolveJob?.cancel()
+        resolveJob = null
+        switchJob?.cancel()
+        switchJob = null
         playerGeneration++
         playerCreationJob?.cancel()
         playerCreationJob = null
@@ -612,15 +638,14 @@ class PlayerViewModel @Inject constructor(
         _player.value?.let { p ->
             resumePositionMs = p.currentPosition
             trackSelectionToRestore = p.trackSelectionParameters
-            releasePlayer(p)
         }
-        _player.value = null
-        _videoInfo.value = null
+        releaseActivePlayer()
     }
 
     fun onStart() {
         playbackVisible = true
-        if (_player.value != null || playerCreationJob?.isActive == true) return
+        if (!started) return
+        if (_player.value != null || playerCreationJob?.isActive == true || resolveJob?.isActive == true) return
         val selectedLive = if (isLive) liveChannels.getOrNull(_liveChannelIndex.value) else null
         if (selectedLive != null && (resolvedUrl == null || activeLiveChannelKey != selectedLive.key)) {
             tuneLiveChannel(selectedLive)
@@ -642,8 +667,11 @@ class PlayerViewModel @Inject constructor(
 
     private fun launchPlayer(url: String, startPositionMs: Long) {
         if (!playbackVisible) return
+        switchJob?.cancel()
+        switchJob = null
         playerCreationJob?.cancel()
         val generation = ++playerGeneration
+        releaseActivePlayer()
         playerCreationJob = viewModelScope.launch { createAndPlay(url, startPositionMs, generation) }
     }
 
@@ -703,8 +731,9 @@ class PlayerViewModel @Inject constructor(
         _videoInfo.value = null
         var activeDecoderName: String? = null
         val diagnostics = PlaybackDiagnostics()
+        fun isActivePlayer(): Boolean = _player.value === player && generation == playerGeneration
         fun updateVideoInfo(format: Format? = player.videoFormat) {
-            if (format != null) _videoInfo.value = VideoFormatInspector.inspect(format, activeDecoderName)
+            if (isActivePlayer() && format != null) _videoInfo.value = VideoFormatInspector.inspect(format, activeDecoderName)
         }
         player.addAnalyticsListener(
             object : AnalyticsListener {
@@ -714,6 +743,7 @@ class PlayerViewModel @Inject constructor(
                     initializedTimestampMs: Long,
                     initializationDurationMs: Long,
                 ) {
+                    if (!isActivePlayer()) return
                     activeDecoderName = decoderName
                     updateVideoInfo()
                 }
@@ -723,6 +753,7 @@ class PlayerViewModel @Inject constructor(
                     format: Format,
                     decoderReuseEvaluation: DecoderReuseEvaluation?,
                 ) {
+                    if (!isActivePlayer()) return
                     _videoInfo.value = VideoFormatInspector.inspect(format, activeDecoderName)
                 }
 
@@ -731,6 +762,7 @@ class PlayerViewModel @Inject constructor(
                     droppedFrames: Int,
                     elapsedMs: Long,
                 ) {
+                    if (!isActivePlayer()) return
                     diagnostics.onDroppedFrames(player.currentPosition, droppedFrames, elapsedMs)
                 }
             },
@@ -745,10 +777,11 @@ class PlayerViewModel @Inject constructor(
         player.addListener(
             object : Player.Listener {
                 override fun onRenderedFirstFrame() {
-                    trace("first_frame")
+                    if (isActivePlayer()) trace("first_frame")
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (!isActivePlayer()) return
                     if (playbackState == Player.STATE_BUFFERING) {
                         diagnostics.onBuffering(player.currentPosition)
                     }
@@ -767,6 +800,7 @@ class PlayerViewModel @Inject constructor(
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    if (!isActivePlayer()) return
                     Log.w("PlayerVM", "Error de reproducción (${error.errorCodeName})", error)
                     saveProgress()
                     if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
@@ -802,6 +836,7 @@ class PlayerViewModel @Inject constructor(
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (!isActivePlayer()) return
                     if (isPlaying) {
                         playbackRetries = 0
                         sourceFailover.everPlayed = true
@@ -812,10 +847,12 @@ class PlayerViewModel @Inject constructor(
                 }
 
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    if (!isActivePlayer()) return
                     if (!playWhenReady) scrobble(ScrobbleAction.PAUSE)
                 }
 
                 override fun onTracksChanged(tracks: Tracks) {
+                    if (!isActivePlayer()) return
                     subtitleCoordinator.onTracksChanged(player, tracks)
                     checkSpanishAudio(player, tracks)
                 }
@@ -829,7 +866,7 @@ class PlayerViewModel @Inject constructor(
             player.setMediaItem(mediaItem, startPositionMs)
         }
         sourceFailover.onPlayerCreated()
-        _player.value = player
+        replaceActivePlayer(player)
         if (earlyFrameRate != null) {
             earlyPreparationPending = player
             player.playWhenReady = false
@@ -850,15 +887,17 @@ class PlayerViewModel @Inject constructor(
     override fun onCleared() {
         playbackVisible = false
         zapJob?.cancel()
+        zapJob = null
         resolveJob?.cancel()
+        resolveJob = null
+        switchJob?.cancel()
+        switchJob = null
         playerGeneration++
         playerCreationJob?.cancel()
         earlyPreparationPending = null
         saveProgress()
         scrobble(ScrobbleAction.STOP)
-        _player.value?.let(::releasePlayer)
-        _player.value = null
-        _videoInfo.value = null
+        releaseActivePlayer()
         super.onCleared()
     }
 

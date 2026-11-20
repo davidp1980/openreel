@@ -162,7 +162,7 @@ fun AppNavHost(
                             liveChannels = channels,
                             liveChannelIndex = index,
                         )
-                        navController.navigate("player")
+                        navController.navigate("player") { launchSingleTop = true }
                     }
                 },
                 consumeLastLiveChannelKey = holder::consumeLastLiveChannelKey,
@@ -174,7 +174,7 @@ fun AppNavHost(
             val active by profiles.active.collectAsState()
             DetailsScreen(
                 onBack = { if (entry.isVisible()) navController.popBackStack() },
-                onPlay = { if (entry.isVisible()) navController.navigate("player") },
+                onPlay = { if (entry.isVisible()) navController.navigate("player") { launchSingleTop = true } },
                 onOpenActor = { personId ->
                     if (!active.kids && entry.isVisible()) navController.navigate("person/$personId")
                 },
