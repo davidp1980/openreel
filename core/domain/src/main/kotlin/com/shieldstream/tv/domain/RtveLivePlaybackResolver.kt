@@ -24,6 +24,26 @@ class RtveLivePlaybackResolver(
         if (channel.paid) {
             return LivePlaybackDecision.Blocked(LiveBlockReason.SUBSCRIPTION_REQUIRED)
         }
+        val directUrls = channel.directUrls.filter { it.isNotBlank() }
+        if (directUrls.isNotEmpty()) {
+            val displayTitle = listOfNotNull(
+                channel.category?.takeIf { it.isNotBlank() },
+                channel.title.takeIf { it.isNotBlank() },
+            ).distinct().joinToString(" · ").ifBlank { channel.id }
+            val sources = directUrls.mapIndexed { index, url ->
+                val cleanPath = url.substringBefore('?').substringBefore('#')
+                val mimeType = if (cleanPath.endsWith(".mpd", ignoreCase = true)) MIME_DASH else MIME_HLS
+                liveSource(
+                    id = "${channel.id}_$index",
+                    title = displayTitle,
+                    url = url,
+                    mimeType = mimeType,
+                    drmTokenUrl = null,
+                    provider = channel.provider,
+                )
+            }
+            return LivePlaybackDecision.Ready(sources = sources, title = displayTitle)
+        }
         val assetId = channel.assetId?.takeIf { it.isNotBlank() }
             ?: return LivePlaybackDecision.Blocked(LiveBlockReason.NO_SOURCE)
 
@@ -76,6 +96,7 @@ class RtveLivePlaybackResolver(
         url: String,
         mimeType: String,
         drmTokenUrl: String?,
+        provider: String = PROVIDER,
     ) = StreamSource(
         id = id,
         title = title,
@@ -88,7 +109,7 @@ class RtveLivePlaybackResolver(
         seeders = null,
         isCached = true,
         directUrl = url,
-        provider = PROVIDER,
+        provider = provider,
         mimeType = mimeType,
         drmTokenUrl = drmTokenUrl,
         isLive = true,

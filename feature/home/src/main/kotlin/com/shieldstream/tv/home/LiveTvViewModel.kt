@@ -84,10 +84,13 @@ class LiveTvViewModel @Inject constructor(
             }
         }
 
-    fun buildPlaybackLineup(selected: LiveChannel): LiveLineupSelection? {
+    fun buildPlaybackLineup(
+        selected: LiveChannel,
+        sourceSections: List<LiveTvSection>? = null,
+    ): LiveLineupSelection? {
         val ready = resolvePlayback(selected) ?: return null
         val selectedEntry = selected.toEntry(ready)
-        val sections = (_uiState.value as? LiveTvUiState.Content)?.sections.orEmpty()
+        val sections = sourceSections ?: (_uiState.value as? LiveTvUiState.Content)?.sections.orEmpty()
         val entries = sections
             .flatMap { it.channels }
             .distinctBy { it.key }
@@ -117,9 +120,9 @@ class LiveTvViewModel @Inject constructor(
     private fun load(forceRefresh: Boolean, silent: Boolean) {
         if (!silent) loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            val previousThematic = (_uiState.value as? LiveTvUiState.Content)
-                ?.sections
-                ?.firstOrNull { it.id == THEMATIC_SECTION_ID }
+            val previousSections = (_uiState.value as? LiveTvUiState.Content)?.sections.orEmpty()
+            val previousThematic = previousSections.firstOrNull { it.id == THEMATIC_SECTION_ID }
+            val previousOpen = previousSections.filter { it.id.startsWith(OPEN_SECTION_PREFIX) }
             if (!silent) {
                 _uiState.update { current ->
                     (current as? LiveTvUiState.Content)?.copy(refreshing = true) ?: LiveTvUiState.Loading
@@ -139,8 +142,12 @@ class LiveTvViewModel @Inject constructor(
                 return@launch
             }
 
-            val baseSections = if (silent && previousThematic != null) {
-                mainSections + previousThematic
+            val baseSections = if (silent) {
+                buildList {
+                    addAll(mainSections)
+                    if (previousThematic != null) add(previousThematic)
+                    addAll(previousOpen)
+                }
             } else {
                 mainSections
             }
@@ -154,15 +161,32 @@ class LiveTvViewModel @Inject constructor(
                 null
             }
 
-            if (thematic != null) {
-                val updated = if (thematic.isNotEmpty()) {
-                    mainSections + LiveTvSection(
+            val openSections = try {
+                repository.loadOpenSections(forceRefresh = forceRefresh && !silent)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                null
+            }
+
+            val thematicSection = when {
+                thematic != null -> thematic.takeIf { it.isNotEmpty() }?.let {
+                    LiveTvSection(
                         id = THEMATIC_SECTION_ID,
                         title = texts.get(StringsR.string.live_tv_section_thematic),
-                        channels = thematic,
+                        channels = it,
                     )
-                } else {
-                    mainSections
+                }
+                silent -> previousThematic
+                else -> null
+            }
+            val resolvedOpen = openSections ?: if (silent) previousOpen else emptyList()
+
+            if (thematic != null || openSections != null) {
+                val updated = buildList {
+                    addAll(mainSections)
+                    if (thematicSection != null) add(thematicSection)
+                    addAll(resolvedOpen)
                 }
                 _uiState.value = LiveTvUiState.Content(sections = updated, refreshing = false)
             }
@@ -181,5 +205,6 @@ class LiveTvViewModel @Inject constructor(
 
     internal companion object {
         const val THEMATIC_SECTION_ID = "rtve_thematic_channels"
+        const val OPEN_SECTION_PREFIX = "tdt_"
     }
 }

@@ -54,7 +54,8 @@
     <string name="home_category_load_error">Error loading “%1$s”</string>
     <string name="home_continue_episode_remaining">S%1$s:E%2$s · %3$s</string>
     <string name="home_remaining">%1$s left</string>
-    <string name="live_tv_title">Live TV · RTVE</string>
+    <string name="live_tv_title">Live TV</string>
+    <string name="live_tv_filter_all">All</string>
     <string name="live_tv_loading">Loading live channels…</string>
     <string name="live_tv_empty">No live broadcasts available right now.</string>
     <string name="live_tv_error">Couldn\'t load live channels. Check your connection.</string>

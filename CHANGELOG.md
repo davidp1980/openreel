@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.33] - 2026-11-20
+
+### Added
+
+- **Free-to-air DTT (TDT) live TV directory:** integrated the public free-to-air Spanish & international TDT channel directory (linking directly to official broadcaster `m3u8` / `mpd` streams across national, regional, local, sports, news, children's, and thematic categories) alongside RTVE's live & 24/7 channels, with category filter chips in the Live TV tab.
+
+### Fixed
+
+- **Single-press `OK` in Live TV channel list:** opening the live action bar on `KeyUp` and removing the redundant `consumeInitialConfirmationKeyUp` guard from the channel list drawer ensures selecting a channel responds on the first `OK` press.
+
 ## [1.0.32] - 2026-11-20
 
 ### Fixed

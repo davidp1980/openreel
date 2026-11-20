@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
@@ -28,6 +30,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -61,6 +64,7 @@ import com.shieldstream.tv.ui.component.tvClickable
 import com.shieldstream.tv.ui.theme.AppColors
 import com.shieldstream.tv.ui.theme.AppShapes
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 
@@ -74,7 +78,9 @@ fun LiveTvScreen(
     val notice by viewModel.notice.collectAsStateWithLifecycle()
     val cardRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
     var lastCardKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedSectionId by rememberSaveable { mutableStateOf<String?>(null) }
     var focusRestoreTick by remember { mutableIntStateOf(0) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -114,7 +120,19 @@ fun LiveTvScreen(
     LaunchedEffect(state is LiveTvUiState.Content, focusRestoreTick) {
         val content = state as? LiveTvUiState.Content ?: return@LaunchedEffect
         val key = lastCardKey ?: return@LaunchedEffect
-        rowItemIndexForKey(content.sections, key)?.let { itemIndex ->
+        val activeId = selectedSectionId?.takeIf { id -> content.sections.any { it.id == id } }
+        val filtered = if (activeId == null) {
+            content.sections
+        } else {
+            content.sections.filter { it.id == activeId }
+        }
+        val effectiveSections = if (activeId != null && rowItemIndexForKey(filtered, key) == null) {
+            selectedSectionId = null
+            content.sections
+        } else {
+            filtered
+        }
+        rowItemIndexForKey(effectiveSections, key)?.let { itemIndex ->
             listState.scrollToItem(itemIndex)
         }
         cardRequester.requestFocusWithRetry()
@@ -165,11 +183,51 @@ fun LiveTvScreen(
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     } else {
+                        val activeSectionId = selectedSectionId?.takeIf { id ->
+                            current.sections.any { it.id == id }
+                        }
+                        val visibleSections = remember(current.sections, activeSectionId) {
+                            if (activeSectionId == null) {
+                                current.sections
+                            } else {
+                                current.sections.filter { it.id == activeSectionId }
+                            }
+                        }
+                        if (current.sections.size > 1) {
+                            val defaultSectionTitle = localizedStringResource(StringsR.string.live_tv_section_now)
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(end = 16.dp),
+                            ) {
+                                item(key = "filter_all") {
+                                    LiveSectionChip(
+                                        label = localizedStringResource(StringsR.string.live_tv_filter_all),
+                                        selected = activeSectionId == null,
+                                        onClick = {
+                                            selectedSectionId = null
+                                            coroutineScope.launch { listState.scrollToItem(0) }
+                                        },
+                                    )
+                                }
+                                items(current.sections, key = { "filter_${it.id}" }) { section ->
+                                    LiveSectionChip(
+                                        label = section.title.ifBlank { defaultSectionTitle },
+                                        selected = activeSectionId == section.id,
+                                        onClick = {
+                                            selectedSectionId = section.id
+                                            coroutineScope.launch { listState.scrollToItem(0) }
+                                        },
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(14.dp))
+                        }
+
                         LazyColumn(
                             state = listState,
                             contentPadding = PaddingValues(bottom = 48.dp),
                         ) {
-                            current.sections.forEachIndexed { sectionIndex, section ->
+                            visibleSections.forEachIndexed { sectionIndex, section ->
                                 item(key = "header_${section.id}") {
                                     if (sectionIndex > 0) Spacer(Modifier.height(12.dp))
                                     val sectionTitle = section.title.ifBlank {
@@ -199,7 +257,7 @@ fun LiveTvScreen(
                                                 nowMillis = nowMillis,
                                                 onClick = {
                                                     lastCardKey = channel.key
-                                                    viewModel.buildPlaybackLineup(channel)?.let { lineup ->
+                                                    viewModel.buildPlaybackLineup(channel, visibleSections)?.let { lineup ->
                                                         onPlayLive(lineup.channels, lineup.index)
                                                     }
                                                 },
@@ -239,6 +297,36 @@ fun LiveTvScreen(
                     .padding(horizontal = 20.dp, vertical = 8.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun LiveSectionChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier
+            .background(
+                when {
+                    focused -> Color.White
+                    selected -> Color.White.copy(alpha = 0.22f)
+                    else -> Color.White.copy(alpha = 0.08f)
+                },
+                AppShapes.Pill,
+            )
+            .onFocusChanged { focused = it.isFocused }
+            .tvClickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+    ) {
+        Text(
+            text = label,
+            color = if (focused) Color.Black else Color.White,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            maxLines = 1,
+        )
     }
 }
 
@@ -286,6 +374,7 @@ private fun LiveChannelCard(
                 ),
         ) {
             val imageUrl = channel.imageUrl
+            val logoUrl = channel.logoUrl
             if (imageUrl != null) {
                 CardImage(
                     url = imageUrl,
@@ -293,6 +382,17 @@ private fun LiveChannelCard(
                     width = CARD_DECODE_WIDTH,
                     height = CARD_DECODE_HEIGHT,
                     modifier = Modifier.fillMaxSize(),
+                )
+            } else if (logoUrl != null) {
+                CardImage(
+                    url = logoUrl,
+                    contentDescription = channel.title,
+                    width = CENTER_LOGO_WIDTH,
+                    height = CENTER_LOGO_HEIGHT,
+                    fit = true,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(CENTER_LOGO_WIDTH, CENTER_LOGO_HEIGHT),
                 )
             } else {
                 Text(
@@ -320,7 +420,7 @@ private fun LiveChannelCard(
                 )
             }
 
-            channel.logoUrl?.let { logo ->
+            if (imageUrl != null && logoUrl != null) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -329,7 +429,7 @@ private fun LiveChannelCard(
                         .padding(horizontal = 6.dp, vertical = 4.dp),
                 ) {
                     CardImage(
-                        url = logo,
+                        url = logoUrl,
                         contentDescription = null,
                         width = LOGO_WIDTH,
                         height = LOGO_HEIGHT,
@@ -403,3 +503,5 @@ private val CARD_DECODE_WIDTH = 265.dp
 private val CARD_DECODE_HEIGHT = 149.dp
 private val LOGO_WIDTH = 48.dp
 private val LOGO_HEIGHT = 22.dp
+private val CENTER_LOGO_WIDTH = 96.dp
+private val CENTER_LOGO_HEIGHT = 64.dp

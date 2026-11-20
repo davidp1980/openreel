@@ -236,6 +236,19 @@ fun PlayerScreen(
         nextUp !is NextUpUiState.Showing
 
     fun handleKey(event: KeyEvent): Boolean {
+        val confirmationKey = event.key == Key.DirectionCenter || event.key == Key.Enter || event.key == Key.NumPadEnter
+        if (event.type == KeyEventType.KeyUp) {
+            if (confirmationKey && canZap && !tracksOpen && !syncOpen && !channelListOpen && !liveActionsOpen) {
+                if (state is PlayerUiState.Error) {
+                    channelListOpen = true
+                } else if (player != null) {
+                    liveActionsOpen = true
+                    showControls()
+                }
+                return true
+            }
+            return false
+        }
         if (event.type != KeyEventType.KeyDown) return false
         if (event.key == Key.MediaStop) {
             if (event.nativeKeyEvent.repeatCount == 0) onBack()
@@ -345,17 +358,7 @@ fun PlayerScreen(
                     showControls()
                     return true
                 }
-                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
-                    if (event.nativeKeyEvent.repeatCount == 0) {
-                        if (state is PlayerUiState.Error) {
-                            channelListOpen = true
-                        } else if (player != null) {
-                            liveActionsOpen = true
-                            showControls()
-                        }
-                    }
-                    return true
-                }
+                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> return true
                 Key.Menu, Key.Captions -> if (player != null) {
                     controlsVisible = false
                     tracksOpen = true

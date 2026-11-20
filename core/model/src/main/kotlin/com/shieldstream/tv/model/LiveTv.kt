@@ -14,6 +14,8 @@ data class LiveChannel(
     val allowedInCountry: Boolean? = null,
     val paid: Boolean = false,
     val hasDrm: Boolean = false,
+    val directUrls: List<String> = emptyList(),
+    val provider: String = "RTVE",
 ) {
     val key: String get() = "${id}_${assetId.orEmpty()}"
 

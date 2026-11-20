@@ -23,3 +23,6 @@ Third-Party Components
   interoperability logic are adapted from OpenRTVE
   (https://github.com/pablocpas/openrtve), licensed under the GNU General
   Public License, version 3.
+- Public free-to-air DTT (TDT) channel directory metadata is fetched at runtime
+  from TDTChannels (https://github.com/LaQuay/TDTChannels), licensed under the
+  Apache License, Version 2.0, linking directly to official broadcaster streams.

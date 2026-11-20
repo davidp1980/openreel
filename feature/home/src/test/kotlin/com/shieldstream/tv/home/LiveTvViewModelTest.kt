@@ -50,6 +50,7 @@ class LiveTvViewModelTest {
         val repository = mockk<LiveTvRepository> {
             coEvery { loadMainSections(any()) } returns main
             coEvery { loadThematicChannels(any()) } returns thematic
+            coEvery { loadOpenSections(any()) } returns emptyList()
         }
         val viewModel = LiveTvViewModel(repository, RtveLivePlaybackResolver { 1_000L }, texts)
 
@@ -79,6 +80,7 @@ class LiveTvViewModelTest {
         val repository = mockk<LiveTvRepository> {
             coEvery { loadMainSections(any()) } returns main
             coEvery { loadThematicChannels(any()) } throws IOException("timeout")
+            coEvery { loadOpenSections(any()) } returns emptyList()
         }
         val viewModel = LiveTvViewModel(repository, RtveLivePlaybackResolver { 1_000L }, texts)
 
@@ -131,10 +133,24 @@ class LiveTvViewModelTest {
                     LiveChannel(id = "3", assetId = "30", title = "Saber y ganar duplicate", category = "La 2"),
                 ),
             ),
+            LiveTvSection(
+                id = "tdt_spain_generalistas",
+                title = "Generalistas",
+                channels = listOf(
+                    LiveChannel(
+                        id = "tdt_a3",
+                        title = "Antena 3",
+                        category = "Generalistas",
+                        directUrls = listOf("https://live.example.com/a3.m3u8"),
+                        provider = "TDT",
+                    ),
+                ),
+            ),
         )
         val repository = mockk<LiveTvRepository> {
             coEvery { loadMainSections(any()) } returns listOf(sections[0])
             coEvery { loadThematicChannels(any()) } returns sections[1].channels
+            coEvery { loadOpenSections(any()) } returns listOf(sections[2])
         }
         val viewModel = LiveTvViewModel(repository, RtveLivePlaybackResolver { 1_000L }, texts)
 
@@ -144,9 +160,15 @@ class LiveTvViewModelTest {
         val lineup = viewModel.buildPlaybackLineup(selected)
         assertNotNull(lineup)
         assertEquals(1, lineup!!.index)
-        assertEquals(listOf("1_10", "3_30", "4_40"), lineup.channels.map { it.key })
+        assertEquals(listOf("1_10", "3_30", "4_40", "tdt_a3_"), lineup.channels.map { it.key })
         assertEquals("La 2 · Saber y ganar", lineup.channels[1].displayTitle)
         assertEquals("Somos Cine", lineup.channels[2].displayTitle)
+        assertEquals("Antena 3", lineup.channels[3].displayTitle)
+
+        val filteredLineup = viewModel.buildPlaybackLineup(sections[2].channels[0], listOf(sections[2]))
+        assertNotNull(filteredLineup)
+        assertEquals(1, filteredLineup!!.channels.size)
+        assertEquals("Antena 3", filteredLineup.channels.single().displayTitle)
 
         val blocked = viewModel.buildPlaybackLineup(sections[0].channels[1])
         assertNull(blocked)

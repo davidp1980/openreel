@@ -47,6 +47,8 @@ import com.shieldstream.tv.data.rtve.RtveDrmTokenClient
 import com.shieldstream.tv.data.rtve.RtveHttpClient
 import com.shieldstream.tv.data.rtve.RtveLiveRepositoryImpl
 import com.shieldstream.tv.data.rtve.RtveTextClient
+import com.shieldstream.tv.data.rtve.TdtHttpClient
+import com.shieldstream.tv.data.rtve.TdtTextClient
 import com.shieldstream.tv.domain.LiveDrmLicenseProvider
 import com.shieldstream.tv.domain.LiveTvRepository
 import dagger.Binds
@@ -150,6 +152,10 @@ abstract class DataModule {
     @Binds
     @Singleton
     abstract fun bindRtveTextClient(impl: RtveHttpClient): RtveTextClient
+
+    @Binds
+    @Singleton
+    abstract fun bindTdtTextClient(impl: TdtHttpClient): TdtTextClient
 
     @Binds
     @Singleton

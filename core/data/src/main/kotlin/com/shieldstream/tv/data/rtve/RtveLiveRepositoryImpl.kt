@@ -17,13 +17,17 @@ class RtveLiveRepositoryImpl internal constructor(
     private val http: RtveTextClient,
     private val parser: RtveLiveParser,
     private val nowMillis: () -> Long,
+    private val tdtHttp: TdtTextClient = TdtTextClient { _, _ -> throw java.io.IOException("TDT client not configured") },
+    private val tdtParser: TdtLiveParser = TdtLiveParser(),
 ) : LiveTvRepository {
 
     @Inject
-    constructor(http: RtveTextClient, json: Json) : this(
+    constructor(http: RtveTextClient, tdtHttp: TdtTextClient, json: Json) : this(
         http = http,
         parser = RtveLiveParser(json),
         nowMillis = System::currentTimeMillis,
+        tdtHttp = tdtHttp,
+        tdtParser = TdtLiveParser(json),
     )
 
     private data class CachedDoc(
@@ -101,10 +105,23 @@ class RtveLiveRepositoryImpl internal constructor(
             .distinctBy { it.assetId ?: it.id }
     }
 
+    override suspend fun loadOpenSections(forceRefresh: Boolean): List<LiveTvSection> {
+        val raw = fetchCached(
+            url = TDT_TV_JSON_URL,
+            freshForMillis = TDT_FRESH_MS,
+            staleFallbackMillis = TDT_STALE_FALLBACK_MS,
+            forceRefresh = forceRefresh,
+            fetcher = tdtHttp::fetch,
+        )
+        return withContext(Dispatchers.Default) { tdtParser.parseSections(raw) }
+    }
+
     private suspend fun fetchCached(
         url: String,
         freshForMillis: Long,
         forceRefresh: Boolean,
+        staleFallbackMillis: Long = STALE_FALLBACK_MS,
+        fetcher: suspend (String, String?) -> RtveTextResponse = http::fetch,
     ): String {
         val now = nowMillis()
         val cached = cache[url]
@@ -114,7 +131,7 @@ class RtveLiveRepositoryImpl internal constructor(
         }
 
         return try {
-            val response = http.fetch(url, cached?.etag)
+            val response = fetcher(url, cached?.etag)
             if (response.notModified && cached != null) {
                 cache[url] = cached.copy(savedAtMillis = now)
                 cached.raw
@@ -126,17 +143,20 @@ class RtveLiveRepositoryImpl internal constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            if (cached != null && age <= STALE_FALLBACK_MS) cached.raw else throw error
+            if (cached != null && age <= staleFallbackMillis) cached.raw else throw error
         }
     }
 
     private companion object {
         const val INDEX_APPS_URL = "https://www.rtve.es/play/index_apps.json"
         const val REMOTE_CONFIG_TV_URL = "https://www.rtve.es/m/configs/rtve_play/2026/estructuraAndroidTV2.json"
+        const val TDT_TV_JSON_URL = "https://www.tdtchannels.com/lists/tv.json"
         const val HOME_FRESH_MS = 2 * 60 * 1_000L
         const val LIVE_FRESH_MS = 45_000L
         const val CONFIG_FRESH_MS = 60 * 60 * 1_000L
+        const val TDT_FRESH_MS = 30 * 60 * 1_000L
         const val STALE_FALLBACK_MS = 15 * 60 * 1_000L
+        const val TDT_STALE_FALLBACK_MS = 2 * 60 * 60 * 1_000L
         const val CONCURRENCY = 4
     }
 }

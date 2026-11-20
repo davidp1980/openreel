@@ -75,4 +75,29 @@ class RtveLivePlaybackResolverTest {
             resolver.resolve(base.copy(assetId = null)),
         )
     }
+
+    @Test
+    fun `directUrls channel resolves to live sources with detected hls and dash mime types`() {
+        val channel = LiveChannel(
+            id = "tdt_antena3",
+            title = "Antena 3",
+            category = "Generalistas",
+            directUrls = listOf(
+                "https://live.example.com/antena3/master.m3u8",
+                "https://backup.example.com/antena3/manifest.mpd?token=1",
+            ),
+            provider = "TDT",
+        )
+
+        val decision = resolver.resolve(channel) as LivePlaybackDecision.Ready
+
+        assertEquals("Antena 3", decision.title)
+        assertEquals(2, decision.sources.size)
+        assertEquals("https://live.example.com/antena3/master.m3u8", decision.sources[0].directUrl)
+        assertEquals("application/x-mpegURL", decision.sources[0].mimeType)
+        assertEquals("TDT", decision.sources[0].provider)
+        assertTrue(decision.sources[0].isLive)
+        assertEquals("https://backup.example.com/antena3/manifest.mpd?token=1", decision.sources[1].directUrl)
+        assertEquals("application/dash+xml", decision.sources[1].mimeType)
+    }
 }

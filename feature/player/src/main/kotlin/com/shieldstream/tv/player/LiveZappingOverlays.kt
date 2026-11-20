@@ -43,7 +43,6 @@ import com.shieldstream.tv.strings.localizedStringResource
 import com.shieldstream.tv.ui.component.AppIcons
 import com.shieldstream.tv.ui.component.CardImage
 import com.shieldstream.tv.ui.component.LineIcons
-import com.shieldstream.tv.ui.component.consumeInitialConfirmationKeyUp
 import com.shieldstream.tv.ui.component.onBackKey
 import com.shieldstream.tv.ui.component.requestFocusWithRetry
 import com.shieldstream.tv.ui.component.tvClickable
@@ -64,9 +63,7 @@ internal fun LiveActionsBar(
     LaunchedEffect(Unit) { initialFocus.requestFocusWithRetry() }
 
     Row(
-        modifier = modifier
-            .consumeInitialConfirmationKeyUp()
-            .focusGroup(),
+        modifier = modifier.focusGroup(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -143,7 +140,6 @@ internal fun LiveChannelListOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.45f))
-            .consumeInitialConfirmationKeyUp()
             .onBackKey(enabled = true, onBack = onClose),
     ) {
         Column(

@@ -54,7 +54,8 @@
     <string name="home_category_load_error">Error cargando «%1$s»</string>
     <string name="home_continue_episode_remaining">T%1$s:E%2$s · %3$s</string>
     <string name="home_remaining">Quedan %1$s</string>
-    <string name="live_tv_title">TV en directo · RTVE</string>
+    <string name="live_tv_title">TV en directo</string>
+    <string name="live_tv_filter_all">Todos</string>
     <string name="live_tv_loading">Cargando canales en directo…</string>
     <string name="live_tv_empty">No hay emisiones en directo disponibles ahora mismo.</string>
     <string name="live_tv_error">No se pudieron cargar los canales en directo. Revisa la conexión.</string>
