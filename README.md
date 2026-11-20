@@ -63,6 +63,7 @@ Artwork is blurred in these screenshots.
 
 ## Credits
 
+Upstream codebase: originally based on [Bambi](https://github.com/grodri99/bambi) (`grodri99/bambi`) and its `javiermolinar/franklix` fork (GPL-3.0).
 Catalog and images: TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.
 Sync: Trakt.
 Sources: Torrentio, Peerflix, Comet, AIOStreams, and the public search engines listed.
@@ -75,7 +76,7 @@ Playback: AndroidX Media3 and dav1d. The tolerant MKV reader is a modified copy 
 
 OpenReel is free software: you can use, study, modify, and share it under the terms of the GNU General Public License v3.0 ([LICENSE](LICENSE)). If you distribute a modified version, it must remain GPL-3.0, and its source code must be available. Third-party components retain their respective licenses (the Media3-based MKV reader is Apache 2.0, which is compatible with GPL-3.0).
 
-In accordance with GNU GPL v3.0 sections 4 and 5(a), this project is a modified derivative work (modified November 2026) based on prior GPL-3.0 code; see [NOTICE](NOTICE) for upstream attribution and third-party copyright notices.
+In accordance with GNU GPL v3.0 sections 4 and 5(a), OpenReel is a modified derivative work (modified November 2026) originally based on [Bambi](https://github.com/grodri99/bambi) (`grodri99/bambi`) and the subsequent `javiermolinar/franklix` fork. See [NOTICE](NOTICE) for full attribution and third-party copyright notices.
 
 ## Legal notice
 
