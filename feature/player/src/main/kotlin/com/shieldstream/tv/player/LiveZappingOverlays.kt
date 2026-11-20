@@ -52,10 +52,8 @@ import com.shieldstream.tv.ui.theme.AppShapes
 
 @Composable
 internal fun LiveActionsBar(
-    isPlaying: Boolean,
     isAtLiveEdge: Boolean,
     channelCount: Int,
-    onTogglePlayPause: () -> Unit,
     onOpenChannels: () -> Unit,
     onOpenTracks: () -> Unit,
     onJumpToLive: () -> Unit,
@@ -73,17 +71,11 @@ internal fun LiveActionsBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LiveActionChip(
-            icon = if (isPlaying) AppIcons.Pause else AppIcons.Play,
-            label = localizedStringResource(if (isPlaying) StringsR.string.player_pause else StringsR.string.player_play),
-            onClick = onTogglePlayPause,
-            onFocused = onInteraction,
-            modifier = Modifier.focusRequester(initialFocus),
-        )
-        LiveActionChip(
             icon = AppIcons.List,
             label = localizedStringResource(StringsR.string.player_live_channels_action, channelCount),
             onClick = onOpenChannels,
             onFocused = onInteraction,
+            modifier = Modifier.focusRequester(initialFocus),
         )
         LiveActionChip(
             icon = AppIcons.Volume,

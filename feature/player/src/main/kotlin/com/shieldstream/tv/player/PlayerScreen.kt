@@ -574,10 +574,6 @@ fun PlayerScreen(
                     canZap = canZap,
                     channelCount = liveChannels.size,
                     liveActionsOpen = liveActionsOpen,
-                    onTogglePlayPause = {
-                        player?.let { p -> if (p.isPlaying) p.pause() else p.play() }
-                        showControls()
-                    },
                     onOpenChannels = {
                         liveActionsOpen = false
                         controlsVisible = false
@@ -837,7 +833,6 @@ private fun ControlsOverlay(
     canZap: Boolean,
     channelCount: Int,
     liveActionsOpen: Boolean,
-    onTogglePlayPause: () -> Unit,
     onOpenChannels: () -> Unit,
     onOpenTracks: () -> Unit,
     onJumpToLive: () -> Unit,
@@ -926,10 +921,8 @@ private fun ControlsOverlay(
                 if (liveActionsOpen && canZap) {
                     Spacer(Modifier.height(14.dp))
                     LiveActionsBar(
-                        isPlaying = playback.isPlaying,
                         isAtLiveEdge = playback.isAtLiveEdge,
                         channelCount = channelCount,
-                        onTogglePlayPause = onTogglePlayPause,
                         onOpenChannels = onOpenChannels,
                         onOpenTracks = onOpenTracks,
                         onJumpToLive = onJumpToLive,

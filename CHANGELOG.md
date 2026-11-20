@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.31] - 2026-11-20
+
+### Changed
+
+- **Live TV quick bar (`OK`):** removed the Pause/Play button from the live zapping action bar and focused the Channels button first so pressing `OK` gives immediate access to the channel list.
+
 ## [1.0.30] - 2026-11-20
 
 ### Added
