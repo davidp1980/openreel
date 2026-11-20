@@ -73,7 +73,9 @@ Playback: AndroidX Media3 and dav1d. The tolerant MKV reader is a modified copy 
 
 ## License
 
-OpenReel is free software: you can use, study, modify, and share it under the terms of the GNU General Public License v3.0 (LICENSE). If you distribute a modified version, it must remain GPL-3.0, and its source code must be available. Third-party components retain their respective licenses (the Media3-based MKV reader is Apache 2.0, which is compatible with GPL-3.0).
+OpenReel is free software: you can use, study, modify, and share it under the terms of the GNU General Public License v3.0 ([LICENSE](LICENSE)). If you distribute a modified version, it must remain GPL-3.0, and its source code must be available. Third-party components retain their respective licenses (the Media3-based MKV reader is Apache 2.0, which is compatible with GPL-3.0).
+
+In accordance with GNU GPL v3.0 sections 4 and 5(a), this project is a modified derivative work (modified November 2026) based on prior GPL-3.0 code; see [NOTICE](NOTICE) for upstream attribution and third-party copyright notices.
 
 ## Legal notice
 

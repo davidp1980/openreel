@@ -1,0 +1,21 @@
+OpenReel
+Copyright (C) 2026 OpenReel contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License, version 3, as published by the
+Free Software Foundation. See the LICENSE file for the full license text.
+
+Modification and Attribution Notice (GNU GPL v3.0, Sections 4 and 5(a))
+-----------------------------------------------------------------------
+OpenReel is a modified derivative work based on prior GPL-3.0 code authored by
+the contributors of the upstream Bambi (grodri99/bambi) and Franklix
+(javiermolinar/franklix) projects. The work was modified and rebranded as
+OpenReel in November 2026; see the Git history and CHANGELOG.md for dated
+records of changes.
+
+Third-Party Components
+----------------------
+- Modified Matroska/MKV reader classes in
+  core/media/src/main/java/com/shieldstream/tv/media/mkv/ are derived from
+  AndroidX Media3 (Copyright (C) 2016, 2019 The Android Open Source Project)
+  and licensed under the Apache License, Version 2.0.
