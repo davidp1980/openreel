@@ -11,6 +11,7 @@ import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
@@ -195,6 +196,7 @@ class PlayerViewModel @Inject constructor(
     private var resumePositionMs = 0L
 
     private var playbackRetries = 0
+    private var castellanoAudioChecked = false
 
     private var saverJob: Job? = null
 
@@ -369,6 +371,7 @@ class PlayerViewModel @Inject constructor(
         currentSource = source
         currentSourceId = source.id
         trackSelectionToRestore = null // Es otra fuente: las pistas de la anterior no aplican.
+        castellanoAudioChecked = false
         if (isLive) {
             launchPlayer(event.url, startPositionMs = C.TIME_UNSET)
             _uiState.value = PlayerUiState.Playing
@@ -510,6 +513,44 @@ class PlayerViewModel @Inject constructor(
         val prompt = _skipPrompt.value as? SkipPromptUiState.Showing ?: return
         _player.value?.seekTo(prompt.targetMs)
         _skipPrompt.value = SkipPromptUiState.Hidden
+    }
+
+    private fun preferCastellanoTrack(player: ExoPlayer, tracks: Tracks) {
+        if (castellanoAudioChecked || !spanishFirst || isLive) return
+        val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+        if (audioGroups.isEmpty()) return
+        castellanoAudioChecked = true
+        if (player.trackSelectionParameters.overrides.keys.any { it.type == C.TRACK_TYPE_AUDIO }) return
+
+        data class Candidate(val group: Tracks.Group, val index: Int, val score: Int, val selected: Boolean)
+
+        val candidates = audioGroups.flatMap { group ->
+            (0 until group.length)
+                .filter { group.isTrackSupported(it) }
+                .mapNotNull { index ->
+                    val format = group.getTrackFormat(index)
+                    val lang = format.language?.lowercase().orEmpty()
+                    val label = format.label?.lowercase().orEmpty()
+                    val isSpanish = lang == "es" || lang.startsWith("es-") || lang == "spa" ||
+                        CASTELLANO_TRACK_REGEX.containsMatchIn(label) || LATINO_TRACK_REGEX.containsMatchIn(label)
+                    if (!isSpanish) return@mapNotNull null
+                    val score = when {
+                        lang == "es-es" || CASTELLANO_TRACK_REGEX.containsMatchIn(label) -> 3
+                        lang in LATINO_LANG_CODES || LATINO_TRACK_REGEX.containsMatchIn(label) -> -3
+                        else -> 0
+                    }
+                    Candidate(group, index, score, group.isTrackSelected(index))
+                }
+        }
+        if (candidates.size < 2) return
+        val best = candidates.maxByOrNull { it.score } ?: return
+        val current = candidates.firstOrNull { it.selected }
+        if (current != null && best.score <= current.score) return
+        if (best.score < 0) return
+
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(best.group.mediaTrackGroup, best.index))
+            .build()
     }
 
     private fun checkSpanishAudio(player: ExoPlayer, tracks: Tracks) {
@@ -769,7 +810,7 @@ class PlayerViewModel @Inject constructor(
         )
         if (spanishFirst) {
             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                .setPreferredAudioLanguages("es", "spa")
+                .setPreferredAudioLanguages("es-ES", "es", "spa")
                 .build()
         }
         // Home/ON_STOP recrea el mismo recurso: conserva selección automática y manual de pistas.
@@ -788,6 +829,7 @@ class PlayerViewModel @Inject constructor(
                     if (playbackState == Player.STATE_READY) {
                         diagnostics.onReady(player.currentPosition)
                         updateVideoInfo()
+                        preferCastellanoTrack(player, player.currentTracks)
                         subtitleCoordinator.onPlayerReady(player, player.currentTracks)
                         checkSpanishAudio(player, player.currentTracks)
                         if (!isLive && checkErrorSlate(player)) return
@@ -909,6 +951,9 @@ class PlayerViewModel @Inject constructor(
         const val MIN_EPISODE_MS = 5 * 60_000L
         const val CATALOG_REFRESH_DELAY_MS = 30_000L
         const val ZAP_DEBOUNCE_MS = 300L
+        val CASTELLANO_TRACK_REGEX = Regex("""(?i)(\bcastellano\b|\beuropean\b|\bspain\b|\bespa[ñn]a\b|\biberia\b|\bes-es\b)""")
+        val LATINO_TRACK_REGEX = Regex("""(?i)(\blatino\b|\blatin\b|\blatam\b|\bm[eé]xico\b|\bes-419\b|\bes-mx\b)""")
+        val LATINO_LANG_CODES = setOf("es-419", "es-mx", "es-ar", "es-co", "es-cl", "es-pe", "es-ve", "es-us")
     }
 
     private fun isHttp403(error: Throwable): Boolean =

@@ -63,7 +63,7 @@ class Media3Factory @Inject constructor(
         val trackSelector = DefaultTrackSelector(context).apply {
             setParameters(
                 buildUponParameters()
-                    .setPreferredAudioLanguages(*if (Lang.isEnglish) arrayOf("en", "eng", "es", "spa") else arrayOf("es", "spa", "en", "eng"))
+                    .setPreferredAudioLanguages(*if (Lang.isEnglish) arrayOf("en", "eng", "es-ES", "es", "spa") else arrayOf("es-ES", "es", "spa", "en", "eng"))
                     .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT),
             )
         }

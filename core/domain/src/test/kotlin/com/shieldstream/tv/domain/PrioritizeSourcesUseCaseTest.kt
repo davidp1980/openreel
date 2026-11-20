@@ -113,6 +113,51 @@ class PrioritizeSourcesUseCaseTest {
     }
 
     @Test
+    fun `Spanish-first ranks Latino-only releases below Castellano and English`() {
+        val latinoTitle = source(
+            id = "latino-title",
+            title = "Movie.Español.Latino.1080p",
+            isCached = true,
+            languages = listOf("LAT"),
+        )
+        val dualLatino = source(
+            id = "dual-latino",
+            title = "Movie.Dual.Latino.1080p",
+            isCached = true,
+            languages = listOf("EN"),
+        )
+        val english = source(
+            id = "english",
+            title = "Movie.1080p",
+            isCached = true,
+            languages = listOf("EN"),
+        )
+        val castellano = source(
+            id = "castellano",
+            title = "Movie.Castellano.1080p",
+            isCached = false,
+            languages = listOf("ES"),
+        )
+        val multiBoth = source(
+            id = "multi-both",
+            title = "Movie.Castellano.Latino.1080p",
+            isCached = true,
+            languages = listOf("ES", "LAT"),
+        )
+
+        val result = prioritize(
+            listOf(latinoTitle, dualLatino, english, castellano, multiBoth),
+            supportedHdr = setOf(HdrType.SDR),
+            preferSpanish = true,
+        )
+
+        assertEquals(
+            listOf("multi-both", "castellano", "english", "latino-title", "dual-latino"),
+            result.map { it.id },
+        )
+    }
+
+    @Test
     fun `any advertised language outranks an unspecified source without Spanish-first`() {
         val multilingual = source(
             id = "multilingual",

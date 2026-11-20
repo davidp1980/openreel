@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.39] - 2026-11-20
+
+### Changed
+
+- **Deprioritize Latino-only sources:** `SpanishAudio.score` now detects Latino/Latam/es-419/es-MX releases before generic Spanish/Dual keywords (unless Castellano or `ES` is also present), ranking Latino-only links below Castellano and English/VOSE instead of at the top.
+- **Prefer Castilian Spanish (`es-ES`) audio tracks in ExoPlayer:** updated preferred audio languages to `es-ES` first and automatically pick the Castilian/European Spanish audio track over Latin American tracks when a file contains multiple Spanish tracks.
+
 ## [1.0.38] - 2026-11-20
 
 ### Changed
