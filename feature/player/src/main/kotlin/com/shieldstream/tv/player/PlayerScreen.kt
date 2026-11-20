@@ -17,6 +17,7 @@ import com.shieldstream.tv.model.PlaybackVideoInfo
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.view.KeyEvent as AndroidKeyEvent
 import android.view.View
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -56,6 +57,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -82,8 +84,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.shieldstream.tv.ui.component.AppIcons
+import com.shieldstream.tv.ui.component.CardImage
 import com.shieldstream.tv.ui.component.PlaybackMediaBadges
 import com.shieldstream.tv.ui.component.onBackKey
+import com.shieldstream.tv.ui.component.requestFocusWithRetry
 import com.shieldstream.tv.ui.component.tvClickable
 import kotlinx.coroutines.delay
 
@@ -105,7 +109,16 @@ fun PlayerScreen(
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val subtitleAppearance by viewModel.subtitleAppearance.collectAsStateWithLifecycle()
     val rawThumbnailsEnabled by viewModel.seekThumbnails.collectAsStateWithLifecycle()
+    val liveChannelIndex by viewModel.liveChannelIndex.collectAsStateWithLifecycle()
+    val liveChannels = viewModel.liveChannels
     val isLive = viewModel.isLive
+    val canZap = viewModel.canZapLiveChannels
+    val currentLiveChannel = liveChannels.getOrNull(liveChannelIndex)
+    val channelBadge = if (canZap) {
+        localizedStringResource(StringsR.string.player_live_channel_position, liveChannelIndex + 1, liveChannels.size)
+    } else {
+        null
+    }
     val thumbnailsEnabled = !isLive && rawThumbnailsEnabled
     val nextUp by viewModel.nextUp.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -123,9 +136,13 @@ fun PlayerScreen(
     BackHandler(onBack = onBack)
 
     var tracksOpen by remember { mutableStateOf(false) }
-    BackHandler(enabled = tracksOpen) { tracksOpen = false }
     var syncOpen by remember { mutableStateOf(false) }
+    var channelListOpen by remember { mutableStateOf(false) }
+    var liveActionsOpen by remember { mutableStateOf(false) }
+    BackHandler(enabled = liveActionsOpen) { liveActionsOpen = false }
+    BackHandler(enabled = tracksOpen) { tracksOpen = false }
     BackHandler(enabled = syncOpen) { syncOpen = false }
+    BackHandler(enabled = channelListOpen) { channelListOpen = false }
     LaunchedEffect(activeExternal) { if (activeExternal == null) syncOpen = false }
 
     LaunchedEffect(externalSubs) {
@@ -181,14 +198,27 @@ fun PlayerScreen(
         interactions++
     }
 
-    LaunchedEffect(controlsVisible, interactions, playback.isPlaying) {
-        if (controlsVisible && playback.isPlaying) {
-            delay(4_000)
-            controlsVisible = false
+    LaunchedEffect(liveChannelIndex) {
+        if (canZap) {
+            liveActionsOpen = false
+            tracksOpen = false
+            showControls()
         }
     }
 
-    LaunchedEffect(tracksOpen) { if (!tracksOpen) runCatching { focusRequester.requestFocus() } }
+    LaunchedEffect(controlsVisible, interactions, playback.isPlaying, liveActionsOpen, channelListOpen, tracksOpen) {
+        if (controlsVisible && playback.isPlaying && !channelListOpen && !tracksOpen) {
+            delay(if (liveActionsOpen) LIVE_ACTIONS_HIDE_MS else CONTROLS_HIDE_MS)
+            controlsVisible = false
+            liveActionsOpen = false
+        }
+    }
+
+    LaunchedEffect(tracksOpen, channelListOpen, liveActionsOpen) {
+        if (!tracksOpen && !channelListOpen && !liveActionsOpen) {
+            focusRequester.requestFocusWithRetry()
+        }
+    }
 
     val skipTarget = (skipPrompt as? SkipPromptUiState.Showing)?.targetMs
     var skipExpired by remember { mutableStateOf(false) }
@@ -208,14 +238,134 @@ fun PlayerScreen(
             if (event.nativeKeyEvent.repeatCount == 0) onBack()
             return true
         }
-        val p = player ?: return false
-
-        fun seekDirectly(stepMs: Long) {
-            val duration = p.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
-            p.seekTo((p.currentPosition + stepMs).coerceIn(0L, duration))
+        fun seekDirectly(targetPlayer: ExoPlayer, stepMs: Long) {
+            val duration = targetPlayer.duration.takeIf { it > 0 } ?: Long.MAX_VALUE
+            targetPlayer.seekTo((targetPlayer.currentPosition + stepMs).coerceIn(0L, duration))
             seekFeedback = if (stepMs < 0) "« ${-stepMs / 1000} s" else "${stepMs / 1000} s »"
             showControls()
         }
+        val keyCode = event.nativeKeyEvent.keyCode
+        if (canZap && !tracksOpen && !syncOpen) {
+            when (keyCode) {
+                AndroidKeyEvent.KEYCODE_CHANNEL_UP, AndroidKeyEvent.KEYCODE_PAGE_UP -> {
+                    channelListOpen = false
+                    liveActionsOpen = false
+                    viewModel.zapLiveChannel(+1)
+                    showControls()
+                    return true
+                }
+                AndroidKeyEvent.KEYCODE_CHANNEL_DOWN, AndroidKeyEvent.KEYCODE_PAGE_DOWN -> {
+                    channelListOpen = false
+                    liveActionsOpen = false
+                    viewModel.zapLiveChannel(-1)
+                    showControls()
+                    return true
+                }
+                AndroidKeyEvent.KEYCODE_GUIDE -> {
+                    if (event.nativeKeyEvent.repeatCount == 0) {
+                        liveActionsOpen = false
+                        controlsVisible = false
+                        channelListOpen = !channelListOpen
+                    }
+                    return true
+                }
+            }
+        }
+        if (channelListOpen) {
+            val p = player ?: return false
+            return when (event.key) {
+                Key.MediaPlayPause, Key.Spacebar -> {
+                    if (p.isPlaying) p.pause() else p.play()
+                    true
+                }
+                Key.MediaPlay -> { p.play(); true }
+                Key.MediaPause -> { p.pause(); true }
+                else -> false
+            }
+        }
+        if (liveActionsOpen) {
+            return when (event.key) {
+                Key.DirectionUp -> {
+                    liveActionsOpen = false
+                    viewModel.zapLiveChannel(+1)
+                    showControls()
+                    true
+                }
+                Key.DirectionDown -> {
+                    liveActionsOpen = false
+                    viewModel.zapLiveChannel(-1)
+                    showControls()
+                    true
+                }
+                Key.Menu, Key.Captions -> if (player != null) {
+                    liveActionsOpen = false
+                    controlsVisible = false
+                    tracksOpen = true
+                    true
+                } else false
+                Key.MediaPlayPause, Key.Spacebar -> player?.let { p ->
+                    if (p.isPlaying) p.pause() else p.play()
+                    showControls()
+                    true
+                } ?: false
+                Key.MediaPlay -> player?.let { p -> p.play(); showControls(); true } ?: false
+                Key.MediaPause -> player?.let { p -> p.pause(); showControls(); true } ?: false
+                Key.MediaRewind -> player?.let { p ->
+                    if (p.isCurrentMediaItemSeekable) seekDirectly(p, -seekStepMs(event.nativeKeyEvent.repeatCount)) else showControls()
+                    true
+                } ?: false
+                Key.MediaFastForward -> player?.let { p ->
+                    if (p.isCurrentMediaItemSeekable) {
+                        if (playback.isAtLiveEdge) {
+                            p.seekToDefaultPosition()
+                            showControls()
+                        } else {
+                            seekDirectly(p, seekStepMs(event.nativeKeyEvent.repeatCount))
+                        }
+                    } else {
+                        showControls()
+                    }
+                    true
+                } ?: false
+                else -> false
+            }
+        }
+        if (!tracksOpen && !syncOpen && canZap) {
+            when (event.key) {
+                Key.DirectionUp -> {
+                    viewModel.zapLiveChannel(+1)
+                    showControls()
+                    return true
+                }
+                Key.DirectionDown -> {
+                    viewModel.zapLiveChannel(-1)
+                    showControls()
+                    return true
+                }
+                Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> {
+                    if (event.nativeKeyEvent.repeatCount == 0) {
+                        if (state is PlayerUiState.Error) {
+                            channelListOpen = true
+                        } else if (player != null) {
+                            liveActionsOpen = true
+                            showControls()
+                        }
+                    }
+                    return true
+                }
+                Key.Menu, Key.Captions -> if (player != null) {
+                    controlsVisible = false
+                    tracksOpen = true
+                    return true
+                }
+                Key.Info -> {
+                    showControls()
+                    return true
+                }
+                else -> Unit
+            }
+        }
+        val p = player ?: return false
 
         if (tracksOpen || syncOpen) {
             return when (event.key) {
@@ -245,8 +395,8 @@ fun PlayerScreen(
                 }
                 Key.MediaPlay -> { p.play(); true }
                 Key.MediaPause -> { p.pause(); true }
-                Key.MediaRewind -> { seekDirectly(-seekStepMs(event.nativeKeyEvent.repeatCount)); true }
-                Key.MediaFastForward -> { seekDirectly(seekStepMs(event.nativeKeyEvent.repeatCount)); true }
+                Key.MediaRewind -> { seekDirectly(p, -seekStepMs(event.nativeKeyEvent.repeatCount)); true }
+                Key.MediaFastForward -> { seekDirectly(p, seekStepMs(event.nativeKeyEvent.repeatCount)); true }
                 else -> false
             }
         }
@@ -296,13 +446,13 @@ fun PlayerScreen(
             Key.DirectionLeft, Key.MediaRewind -> {
                 if (isLive || playback.isCurrentLive) {
                     if (p.isCurrentMediaItemSeekable) {
-                        seekDirectly(-seekStepMs(event.nativeKeyEvent.repeatCount))
+                        seekDirectly(p, -seekStepMs(event.nativeKeyEvent.repeatCount))
                     } else {
                         showControls()
                     }
                 } else {
                     val step = seekStepMs(event.nativeKeyEvent.repeatCount)
-                    if (thumbnailsEnabled) scrub(-step) else seekDirectly(-step)
+                    if (thumbnailsEnabled) scrub(-step) else seekDirectly(p, -step)
                 }
                 true
             }
@@ -313,14 +463,14 @@ fun PlayerScreen(
                             p.seekToDefaultPosition()
                             showControls()
                         } else {
-                            seekDirectly(seekStepMs(event.nativeKeyEvent.repeatCount))
+                            seekDirectly(p, seekStepMs(event.nativeKeyEvent.repeatCount))
                         }
                     } else {
                         showControls()
                     }
                 } else {
                     val step = seekStepMs(event.nativeKeyEvent.repeatCount)
-                    if (thumbnailsEnabled) scrub(step) else seekDirectly(step)
+                    if (thumbnailsEnabled) scrub(step) else seekDirectly(p, step)
                 }
                 true
             }
@@ -354,11 +504,14 @@ fun PlayerScreen(
                 if (resumeAfterScrub) player?.play()
                 showControls()
             }
+            .onBackKey(enabled = channelListOpen) { channelListOpen = false }
+            .onBackKey(enabled = liveActionsOpen && !channelListOpen && !tracksOpen) { liveActionsOpen = false }
             .onBackKey(enabled = tracksOpen) { tracksOpen = false }
             .onBackKey(enabled = syncOpen) { syncOpen = false }
             .onBackKey(enabled = nextUp is NextUpUiState.Showing && !tracksOpen && !syncOpen && scrubMs == null) {
                 viewModel.dismissNextUp()
             }
+            .focusProperties { canFocus = !tracksOpen && !channelListOpen && !liveActionsOpen }
             .focusRequester(focusRequester)
             .onKeyEvent(::handleKey)
             .focusable(),
@@ -407,15 +560,43 @@ fun PlayerScreen(
         }
 
         if (state == PlayerUiState.Playing) {
-            AnimatedVisibility(visible = controlsVisible && !syncOpen, enter = fadeIn(), exit = fadeOut()) {
+            AnimatedVisibility(visible = controlsVisible && !syncOpen && !channelListOpen, enter = fadeIn(), exit = fadeOut()) {
                 ControlsOverlay(
                     title = title,
+                    channelBadge = channelBadge,
+                    logoUrl = currentLiveChannel?.logoUrl,
                     videoInfo = videoInfo,
                     playback = playback,
                     scrubMs = scrubMs,
                     thumbs = thumbs,
                     thumbnailsEnabled = thumbnailsEnabled,
                     isLive = isLive,
+                    canZap = canZap,
+                    channelCount = liveChannels.size,
+                    liveActionsOpen = liveActionsOpen,
+                    onTogglePlayPause = {
+                        player?.let { p -> if (p.isPlaying) p.pause() else p.play() }
+                        showControls()
+                    },
+                    onOpenChannels = {
+                        liveActionsOpen = false
+                        controlsVisible = false
+                        channelListOpen = true
+                    },
+                    onOpenTracks = {
+                        liveActionsOpen = false
+                        controlsVisible = false
+                        tracksOpen = true
+                    },
+                    onJumpToLive = {
+                        player?.let { p ->
+                            p.seekToDefaultPosition()
+                            p.play()
+                        }
+                        liveActionsOpen = false
+                        showControls()
+                    },
+                    onInteraction = ::showControls,
                 )
             }
             seekFeedback?.let {
@@ -493,9 +674,39 @@ fun PlayerScreen(
         }
 
         when (val s = state) {
-            is PlayerUiState.Resolving -> StatusOverlay(title = title, message = s.message, loading = true, isLive = isLive)
-            is PlayerUiState.Error -> StatusOverlay(title = title, message = s.message, loading = false, isLive = isLive)
+            is PlayerUiState.Resolving -> StatusOverlay(
+                title = title,
+                message = s.message,
+                loading = true,
+                isLive = isLive,
+                canZap = canZap,
+                channelBadge = channelBadge,
+                logoUrl = currentLiveChannel?.logoUrl,
+            )
+            is PlayerUiState.Error -> StatusOverlay(
+                title = title,
+                message = s.message,
+                loading = false,
+                isLive = isLive,
+                canZap = canZap,
+                channelBadge = channelBadge,
+                logoUrl = currentLiveChannel?.logoUrl,
+            )
             PlayerUiState.Playing -> Unit
+        }
+
+        if (channelListOpen && canZap) {
+            LiveChannelListOverlay(
+                channels = liveChannels,
+                currentIndex = liveChannelIndex,
+                onSelect = { index ->
+                    viewModel.selectLiveChannel(index, immediate = true)
+                    channelListOpen = false
+                    liveActionsOpen = false
+                    controlsVisible = true
+                },
+                onClose = { channelListOpen = false },
+            )
         }
     }
 }
@@ -503,6 +714,8 @@ fun PlayerScreen(
 private const val NEXT_FILL_SECONDS = 10
 private const val SKIP_VISIBLE_MS = 10_000L
 private const val LIVE_EDGE_TOLERANCE_MS = 15_000L
+private const val CONTROLS_HIDE_MS = 4_000L
+private const val LIVE_ACTIONS_HIDE_MS = 5_000L
 
 @Composable
 private fun PlayerPill(text: String, icon: ImageVector, fill: Float?, modifier: Modifier = Modifier) {
@@ -575,14 +788,60 @@ private fun rememberPlaybackState(player: ExoPlayer?): PlaybackState {
 }
 
 @Composable
+private fun LiveChannelIdentity(logoUrl: String?, channelBadge: String?) {
+    if (logoUrl == null && channelBadge == null) return
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (logoUrl != null) {
+            Box(
+                modifier = Modifier
+                    .background(AppColors.PillScrim, AppShapes.Badge)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                CardImage(
+                    url = logoUrl,
+                    contentDescription = null,
+                    width = 44.dp,
+                    height = 22.dp,
+                    fit = true,
+                    modifier = Modifier.size(44.dp, 22.dp),
+                )
+            }
+        }
+        if (channelBadge != null) {
+            Text(
+                text = channelBadge,
+                color = Color.White,
+                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                modifier = Modifier
+                    .background(AppColors.PillScrim, AppShapes.Pill)
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun ControlsOverlay(
     title: String,
+    channelBadge: String?,
+    logoUrl: String?,
     videoInfo: PlaybackVideoInfo?,
     playback: PlaybackState,
     scrubMs: Long?,
     thumbs: SeekThumbnails?,
     thumbnailsEnabled: Boolean,
     isLive: Boolean,
+    canZap: Boolean,
+    channelCount: Int,
+    liveActionsOpen: Boolean,
+    onTogglePlayPause: () -> Unit,
+    onOpenChannels: () -> Unit,
+    onOpenTracks: () -> Unit,
+    onJumpToLive: () -> Unit,
+    onInteraction: () -> Unit,
 ) {
     val liveMode = isLive || playback.isCurrentLive
     val shownMs = scrubMs ?: playback.positionMs
@@ -596,6 +855,10 @@ private fun ControlsOverlay(
         Column(
             Modifier.align(Alignment.TopStart).padding(start = 48.dp, top = 28.dp, end = 48.dp),
         ) {
+            if (logoUrl != null || channelBadge != null) {
+                LiveChannelIdentity(logoUrl = logoUrl, channelBadge = channelBadge)
+                Spacer(Modifier.height(8.dp))
+            }
             Text(
                 text = title,
                 color = Color.White,
@@ -651,13 +914,26 @@ private fun ControlsOverlay(
                     )
                     Spacer(Modifier.weight(1f))
                     Text(
-                        text = if (!playback.isAtLiveEdge) {
-                            localizedStringResource(StringsR.string.player_live_behind_hint)
-                        } else {
-                            localizedStringResource(StringsR.string.player_live_controls_hint)
+                        text = when {
+                            canZap -> localizedStringResource(StringsR.string.player_live_zap_hint)
+                            !playback.isAtLiveEdge -> localizedStringResource(StringsR.string.player_live_behind_hint)
+                            else -> localizedStringResource(StringsR.string.player_live_controls_hint)
                         },
                         color = Color.White.copy(alpha = 0.5f),
                         style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (liveActionsOpen && canZap) {
+                    Spacer(Modifier.height(14.dp))
+                    LiveActionsBar(
+                        isPlaying = playback.isPlaying,
+                        isAtLiveEdge = playback.isAtLiveEdge,
+                        channelCount = channelCount,
+                        onTogglePlayPause = onTogglePlayPause,
+                        onOpenChannels = onOpenChannels,
+                        onOpenTracks = onOpenTracks,
+                        onJumpToLive = onJumpToLive,
+                        onInteraction = onInteraction,
                     )
                 }
             } else {
@@ -732,12 +1008,24 @@ private fun SeekBar(playback: PlaybackState, positionMs: Long) {
 }
 
 @Composable
-private fun StatusOverlay(title: String, message: String, loading: Boolean, isLive: Boolean) {
+private fun StatusOverlay(
+    title: String,
+    message: String,
+    loading: Boolean,
+    isLive: Boolean,
+    canZap: Boolean = false,
+    channelBadge: String? = null,
+    logoUrl: String? = null,
+) {
     Column(
         modifier = Modifier.fillMaxSize().background(AppColors.Background).padding(48.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        if (logoUrl != null || channelBadge != null) {
+            LiveChannelIdentity(logoUrl = logoUrl, channelBadge = channelBadge)
+            Spacer(Modifier.height(14.dp))
+        }
         if (title.isNotBlank()) {
             Text(
                 text = title,
@@ -762,11 +1050,15 @@ private fun StatusOverlay(title: String, message: String, loading: Boolean, isLi
             Spacer(Modifier.height(16.dp))
             Text(
                 text = localizedStringResource(
-                    if (isLive) StringsR.string.player_live_press_back_to_return
-                    else StringsR.string.player_press_back_to_pick_another_source,
+                    when {
+                        isLive && canZap -> StringsR.string.player_live_error_zap_hint
+                        isLive -> StringsR.string.player_live_press_back_to_return
+                        else -> StringsR.string.player_press_back_to_pick_another_source
+                    },
                 ),
                 color = Color(0xFFB3B3B3),
                 style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
             )
         }
     }

@@ -1,8 +1,12 @@
 package com.shieldstream.tv.domain
 
 import com.shieldstream.tv.model.CatalogItem
+import com.shieldstream.tv.model.HdrType
+import com.shieldstream.tv.model.LiveChannelEntry
 import com.shieldstream.tv.model.MediaType
 import com.shieldstream.tv.model.PlaybackMedia
+import com.shieldstream.tv.model.Quality
+import com.shieldstream.tv.model.StreamSource
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -78,6 +82,50 @@ class SelectedContentHolderTest {
 
         assertEquals(next, holder.consumeNextRequest())
         assertNull(holder.consumeNextRequest())
+    }
+
+    @Test
+    fun `live lineup and last live channel key are preserved and consumed once`() {
+        val holder = SelectedContentHolder()
+        val entry = LiveChannelEntry(
+            key = "1_10",
+            title = "Telediario",
+            channelName = "La 1",
+            sources = listOf(
+                StreamSource(
+                    id = "s1",
+                    title = "La 1",
+                    infoHash = "",
+                    fileIdx = null,
+                    magnet = "",
+                    quality = Quality.FHD_1080,
+                    hdrType = HdrType.SDR,
+                    sizeBytes = 0L,
+                    seeders = null,
+                    isCached = true,
+                    directUrl = "https://ztnr.rtve.es/ztnr/10.m3u8",
+                    isLive = true,
+                ),
+            ),
+        )
+
+        holder.playQueue(
+            sources = entry.sources,
+            label = entry.displayTitle,
+            isLive = true,
+            liveChannels = listOf(entry),
+            liveChannelIndex = 0,
+        )
+        assertEquals(listOf(entry), holder.playback.value?.liveChannels)
+        assertEquals(0, holder.playback.value?.liveChannelIndex)
+
+        holder.setLastLiveChannelKey("2_20")
+        assertEquals("2_20", holder.consumeLastLiveChannelKey())
+        assertNull(holder.consumeLastLiveChannelKey())
+
+        holder.setLastLiveChannelKey("3_30")
+        holder.selectItem(item())
+        assertNull(holder.consumeLastLiveChannelKey())
     }
 
     private fun item() = CatalogItem(

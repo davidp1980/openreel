@@ -148,20 +148,24 @@ fun AppNavHost(
                     }
                 },
                 onOpenSettings = { navController.navigate("settings") },
-                onPlayLive = { sources, label ->
-                    if (entry.isVisible()) {
+                onPlayLive = { channels, index ->
+                    val current = channels.getOrNull(index)
+                    if (entry.isVisible() && current != null) {
                         holder.playQueue(
-                            sources = sources,
-                            label = label,
+                            sources = current.sources,
+                            label = current.displayTitle,
                             progressKey = null,
                             fromStart = true,
                             media = null,
                             next = null,
                             isLive = true,
+                            liveChannels = channels,
+                            liveChannelIndex = index,
                         )
                         navController.navigate("player")
                     }
                 },
+                consumeLastLiveChannelKey = holder::consumeLastLiveChannelKey,
             )
             UpdatePrompt()
         }

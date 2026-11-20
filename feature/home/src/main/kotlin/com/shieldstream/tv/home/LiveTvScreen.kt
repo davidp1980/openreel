@@ -17,11 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,10 +43,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shieldstream.tv.model.Lang
 import com.shieldstream.tv.model.LiveChannel
-import com.shieldstream.tv.model.StreamSource
+import com.shieldstream.tv.model.LiveChannelEntry
+import com.shieldstream.tv.model.LiveTvSection
 import com.shieldstream.tv.strings.R as StringsR
 import com.shieldstream.tv.strings.localizedStringResource
 import com.shieldstream.tv.ui.component.CardImage
@@ -59,14 +66,31 @@ import java.util.Date
 
 @Composable
 fun LiveTvScreen(
-    onPlayLive: (List<StreamSource>, String) -> Unit,
+    onPlayLive: (List<LiveChannelEntry>, Int) -> Unit,
+    consumeLastLiveChannelKey: () -> String? = { null },
     viewModel: LiveTvViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
     val cardRequester = remember { FocusRequester() }
+    val listState = rememberLazyListState()
     var lastCardKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var focusRestoreTick by remember { mutableIntStateOf(0) }
     var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                consumeLastLiveChannelKey()?.let { key ->
+                    lastCardKey = key
+                    focusRestoreTick++
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.activate()
@@ -87,10 +111,13 @@ fun LiveTvScreen(
         }
     }
 
-    LaunchedEffect(state is LiveTvUiState.Content) {
-        if (state is LiveTvUiState.Content && lastCardKey != null) {
-            cardRequester.requestFocusWithRetry()
+    LaunchedEffect(state is LiveTvUiState.Content, focusRestoreTick) {
+        val content = state as? LiveTvUiState.Content ?: return@LaunchedEffect
+        val key = lastCardKey ?: return@LaunchedEffect
+        rowItemIndexForKey(content.sections, key)?.let { itemIndex ->
+            listState.scrollToItem(itemIndex)
         }
+        cardRequester.requestFocusWithRetry()
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -138,7 +165,10 @@ fun LiveTvScreen(
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     } else {
-                        LazyColumn(contentPadding = PaddingValues(bottom = 48.dp)) {
+                        LazyColumn(
+                            state = listState,
+                            contentPadding = PaddingValues(bottom = 48.dp),
+                        ) {
                             current.sections.forEachIndexed { sectionIndex, section ->
                                 item(key = "header_${section.id}") {
                                     if (sectionIndex > 0) Spacer(Modifier.height(12.dp))
@@ -169,8 +199,8 @@ fun LiveTvScreen(
                                                 nowMillis = nowMillis,
                                                 onClick = {
                                                     lastCardKey = channel.key
-                                                    viewModel.resolvePlayback(channel)?.let { ready ->
-                                                        onPlayLive(ready.sources, ready.title)
+                                                    viewModel.buildPlaybackLineup(channel)?.let { lineup ->
+                                                        onPlayLive(lineup.channels, lineup.index)
                                                     }
                                                 },
                                                 onFocused = { lastCardKey = channel.key },
@@ -350,6 +380,19 @@ private fun LiveChannelCard(
             )
         }
     }
+}
+
+private fun rowItemIndexForKey(sections: List<LiveTvSection>, key: String): Int? {
+    var itemIndex = 0
+    for (section in sections) {
+        itemIndex++ // section header
+        val rows = section.channels.chunked(GRID_COLUMNS)
+        for (row in rows) {
+            if (row.any { it.key == key }) return itemIndex
+            itemIndex++
+        }
+    }
+    return null
 }
 
 private const val GRID_COLUMNS = 3

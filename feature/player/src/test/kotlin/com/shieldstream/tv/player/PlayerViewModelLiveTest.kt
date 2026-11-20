@@ -27,6 +27,7 @@ import com.shieldstream.tv.media.Media3Factory
 import com.shieldstream.tv.media.PlaybackPolicyProvider
 import com.shieldstream.tv.model.DeviceOptimization
 import com.shieldstream.tv.model.HdrType
+import com.shieldstream.tv.model.LiveChannelEntry
 import com.shieldstream.tv.model.PlaybackPolicy
 import com.shieldstream.tv.model.Profile
 import com.shieldstream.tv.model.Quality
@@ -43,6 +44,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -167,6 +171,159 @@ class PlayerViewModelLiveTest {
         fixture.viewModel.viewModelScope.cancel()
     }
 
+    @Test
+    fun `zapLiveChannel wraps around, switches between drm and hls, releases old player and saves last key`() = runBlocking {
+        val channels = sampleLineup()
+        val players = FakeLivePlayers(Tracks.EMPTY)
+        val fixture = liveFixture(
+            players = players,
+            sources = channels[0].sources,
+            licenseProvider = LiveDrmLicenseProvider { "https://drm.axinom.test/license" },
+            widevineSupported = true,
+            liveChannels = channels,
+            liveChannelIndex = 0,
+        ).apply { viewModel.zapDebounceMs = 0L }
+
+        fixture.viewModel.start()
+        yield()
+        assertEquals(0, fixture.viewModel.liveChannelIndex.value)
+        assertEquals("La 1 · Telediario", fixture.viewModel.title.value)
+        assertEquals("https://ztnr.rtve.es/ztnr/999.mpd", players.singleArgItems[0].localConfiguration?.uri.toString())
+
+        fixture.viewModel.zapLiveChannel(+1)
+        yield()
+        assertEquals(1, fixture.viewModel.liveChannelIndex.value)
+        assertEquals("24h", fixture.viewModel.title.value)
+        assertEquals(2, players.singleArgItems.size)
+        assertEquals("https://ztnr.rtve.es/ztnr/123.m3u8", players.singleArgItems[1].localConfiguration?.uri.toString())
+        assertNull(players.singleArgItems[1].localConfiguration?.drmConfiguration)
+        verify(exactly = 1) { players.player(0).release() }
+
+        // Wrap backwards from index 1 -> 0 -> 2
+        fixture.viewModel.zapLiveChannel(-1)
+        yield()
+        fixture.viewModel.zapLiveChannel(-1)
+        yield()
+        assertEquals(2, fixture.viewModel.liveChannelIndex.value)
+        assertEquals("Teledeporte", fixture.viewModel.title.value)
+        assertEquals("3_777", fixture.holder.consumeLastLiveChannelKey())
+
+        fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `rapid zapping within debounce window updates label immediately and tunes final channel only once`() = runTest {
+        val channels = sampleLineup()
+        val players = FakeLivePlayers(Tracks.EMPTY)
+        val fixture = liveFixture(
+            players = players,
+            sources = channels[0].sources,
+            licenseProvider = LiveDrmLicenseProvider { "https://drm.axinom.test/license" },
+            widevineSupported = true,
+            liveChannels = channels,
+            liveChannelIndex = 0,
+        )
+
+        fixture.viewModel.start()
+        runCurrent()
+        assertEquals(1, players.singleArgItems.size)
+
+        fixture.viewModel.zapLiveChannel(+1)
+        fixture.viewModel.zapLiveChannel(+1)
+        assertEquals(2, fixture.viewModel.liveChannelIndex.value)
+        assertEquals("Teledeporte", fixture.viewModel.title.value)
+        advanceTimeBy(299)
+        runCurrent()
+        assertEquals(1, players.singleArgItems.size)
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(2, players.singleArgItems.size)
+        assertEquals("https://ztnr.rtve.es/ztnr/777.m3u8", players.singleArgItems[1].localConfiguration?.uri.toString())
+
+        fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `rapid zap back to active channel within debounce window does not recreate player`() = runTest {
+        val channels = sampleLineup()
+        val players = FakeLivePlayers(Tracks.EMPTY)
+        val fixture = liveFixture(
+            players = players,
+            sources = channels[0].sources,
+            licenseProvider = LiveDrmLicenseProvider { "https://drm.axinom.test/license" },
+            widevineSupported = true,
+            liveChannels = channels,
+            liveChannelIndex = 0,
+        )
+
+        fixture.viewModel.start()
+        runCurrent()
+        assertEquals(1, players.singleArgItems.size)
+
+        fixture.viewModel.zapLiveChannel(+1)
+        fixture.viewModel.zapLiveChannel(-1)
+        advanceTimeBy(400)
+        runCurrent()
+
+        assertEquals(0, fixture.viewModel.liveChannelIndex.value)
+        assertEquals(1, players.singleArgItems.size)
+        verify(exactly = 0) { players.player(0).release() }
+
+        fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
+    }
+
+    @Test
+    fun `selectLiveChannel with immediate switches without waiting for debounce`() = runTest {
+        val channels = sampleLineup()
+        val players = FakeLivePlayers(Tracks.EMPTY)
+        val fixture = liveFixture(
+            players = players,
+            sources = channels[0].sources,
+            licenseProvider = LiveDrmLicenseProvider { "https://drm.axinom.test/license" },
+            widevineSupported = true,
+            liveChannels = channels,
+            liveChannelIndex = 0,
+        )
+
+        fixture.viewModel.start()
+        runCurrent()
+        fixture.viewModel.selectLiveChannel(2, immediate = true)
+        runCurrent()
+
+        assertEquals(2, fixture.viewModel.liveChannelIndex.value)
+        assertEquals("Teledeporte", fixture.viewModel.title.value)
+        assertEquals(2, players.singleArgItems.size)
+        assertEquals("https://ztnr.rtve.es/ztnr/777.m3u8", players.singleArgItems[1].localConfiguration?.uri.toString())
+
+        fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
+    }
+
+    private fun sampleLineup(): List<LiveChannelEntry> = listOf(
+        LiveChannelEntry(
+            key = "1_999",
+            title = "Telediario",
+            channelName = "La 1",
+            sources = listOf(drmSource(), fallbackDashSource()),
+        ),
+        LiveChannelEntry(
+            key = "2_123",
+            title = "24h",
+            sources = listOf(hlsSource()),
+        ),
+        LiveChannelEntry(
+            key = "3_777",
+            title = "Teledeporte",
+            sources = listOf(
+                hlsSource().copy(id = "rtve_777_hls", title = "Teledeporte", directUrl = "https://ztnr.rtve.es/ztnr/777.m3u8"),
+            ),
+        ),
+    )
+
     private fun liveFixture(
         players: FakeLivePlayers,
         sources: List<StreamSource>,
@@ -174,6 +331,8 @@ class PlayerViewModelLiveTest {
         widevineSupported: Boolean = true,
         spanishOnlySources: Boolean = false,
         matchContentFrameRate: Boolean = false,
+        liveChannels: List<LiveChannelEntry> = emptyList(),
+        liveChannelIndex: Int = 0,
     ): LiveFixture {
         val policy = PlaybackPolicy.automatic(512L * 1024 * 1024)
         val dataSourceFactory = mockk<DataSource.Factory>(relaxed = true)
@@ -209,7 +368,13 @@ class PlayerViewModelLiveTest {
             every { active } returns MutableStateFlow(profile)
         }
         val holder = SelectedContentHolder().apply {
-            playQueue(sources = sources, label = "La 1", isLive = true)
+            playQueue(
+                sources = sources,
+                label = liveChannels.getOrNull(liveChannelIndex)?.displayTitle ?: "La 1",
+                isLive = true,
+                liveChannels = liveChannels,
+                liveChannelIndex = liveChannelIndex,
+            )
         }
         val watchProgress = mockk<WatchProgressRepository>(relaxed = true)
         val trakt = mockk<TraktRepository>(relaxed = true)
@@ -231,7 +396,7 @@ class PlayerViewModelLiveTest {
         ).apply {
             isWidevineSupported = { widevineSupported }
         }
-        return LiveFixture(vm, dataSourceFactory, watchProgress, trakt, skipSegments)
+        return LiveFixture(vm, holder, dataSourceFactory, watchProgress, trakt, skipSegments)
     }
 
     private fun drmSource() = StreamSource(
@@ -304,6 +469,7 @@ class PlayerViewModelLiveTest {
 
     private data class LiveFixture(
         val viewModel: PlayerViewModel,
+        val holder: SelectedContentHolder,
         val dataSourceFactory: DataSource.Factory,
         val watchProgress: WatchProgressRepository,
         val trakt: TraktRepository,

@@ -92,4 +92,13 @@
     <string name="player_back_to_return_to_live">Atrás para volver al directo</string>
     <string name="player_audio_original_version">Versión original</string>
     <string name="player_audio_description">Audiodescripción</string>
+    <string name="player_live_tuning">Sintonizando canal…</string>
+    <string name="player_live_zap_hint">▲ ▼ Cambiar canal · OK Controles · ◀ ▶ 10 s</string>
+    <string name="player_live_error_zap_hint">Pulsa ▲ ▼ para cambiar de canal · OK Lista de canales · Atrás para volver</string>
+    <string name="player_live_channels_action">Canales (%1$d)</string>
+    <string name="player_live_channels_title">Canales en directo</string>
+    <string name="player_live_channels_hint">▲ ▼ Elegir · OK Ver · Atrás cerrar</string>
+    <string name="player_live_tracks_action">Audio y subtítulos</string>
+    <string name="player_live_jump_to_live">Volver al directo</string>
+    <string name="player_live_channel_position">%1$d / %2$d</string>
 </resources>

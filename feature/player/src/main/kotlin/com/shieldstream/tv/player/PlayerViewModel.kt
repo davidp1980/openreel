@@ -36,6 +36,7 @@ import com.shieldstream.tv.media.PlaybackPolicyProvider
 import com.shieldstream.tv.media.VideoFormatInspector
 import androidx.media3.common.PlaybackException
 import com.shieldstream.tv.model.ExternalSubtitle
+import com.shieldstream.tv.model.LiveChannelEntry
 import com.shieldstream.tv.model.PlaybackVideoInfo
 import com.shieldstream.tv.model.StreamSource
 import com.shieldstream.tv.model.SubtitleAppearance
@@ -122,13 +123,21 @@ class PlayerViewModel @Inject constructor(
     private var dialogueBoostController: DialogueBoostController? = null
 
     private val playbackSnapshot = holder.playback.value
-    private val queueSnapshot = playbackSnapshot?.sources.orEmpty()
+    private var queueSnapshot = playbackSnapshot?.sources.orEmpty()
     private val mediaSnapshot = playbackSnapshot?.media
-    val isLive: Boolean = playbackSnapshot?.isLive == true || queueSnapshot.any { it.isLive }
+    val liveChannels: List<LiveChannelEntry> = playbackSnapshot?.liveChannels.orEmpty()
+    val isLive: Boolean = playbackSnapshot?.isLive == true || queueSnapshot.any { it.isLive } || liveChannels.isNotEmpty()
+    val canZapLiveChannels: Boolean = isLive && liveChannels.size > 1
+    private val _liveChannelIndex = MutableStateFlow(
+        playbackSnapshot?.liveChannelIndex?.coerceIn(0, (liveChannels.size - 1).coerceAtLeast(0)) ?: 0,
+    )
+    val liveChannelIndex: StateFlow<Int> = _liveChannelIndex.asStateFlow()
     internal var isWidevineSupported: () -> Boolean = {
         runCatching { MediaDrm.isCryptoSchemeSupported(C.WIDEVINE_UUID) }.getOrDefault(false)
     }
-    val title: StateFlow<String> = MutableStateFlow(playbackSnapshot?.label.orEmpty()).asStateFlow()
+    internal var zapDebounceMs: Long = ZAP_DEBOUNCE_MS
+    private val _title = MutableStateFlow(playbackSnapshot?.label.orEmpty())
+    val title: StateFlow<String> = _title.asStateFlow()
 
     val seekThumbnails: StateFlow<Boolean> = combine(
         settings.deviceOptimization,
@@ -173,6 +182,9 @@ class PlayerViewModel @Inject constructor(
     private var playbackVisible = true
     private var playerGeneration = 0L
     private var playerCreationJob: Job? = null
+    private var resolveJob: Job? = null
+    private var zapJob: Job? = null
+    private var activeLiveChannelKey: String? = liveChannels.getOrNull(_liveChannelIndex.value)?.key
     private var earlyPreparationPending: ExoPlayer? = null
     private var trackSelectionToRestore: TrackSelectionParameters? = null
     private var resolvedUrl: String? = null
@@ -185,8 +197,10 @@ class PlayerViewModel @Inject constructor(
 
     private var saverJob: Job? = null
 
-    private val sourceFailover = SourceFailoverController(
-        queue = queueSnapshot,
+    private var sourceFailover = createSourceFailover(queueSnapshot)
+
+    private fun createSourceFailover(queue: List<StreamSource>) = SourceFailoverController(
+        queue = queue,
         resolveStreamUseCase = resolveStreamUseCase,
         texts = texts,
         spanishOnly = spanishOnly,
@@ -235,12 +249,69 @@ class PlayerViewModel @Inject constructor(
         started = true
         trace("player_opened")
 
+        if (isLive) {
+            activeLiveChannelKey?.let(holder::setLastLiveChannelKey)
+        }
         val queue = queueSnapshot
         if (queue.isEmpty()) {
             _uiState.value = PlayerUiState.Error(texts.get(StringsR.string.player_no_source_selected))
             return
         }
         if (!isLive) loadSegments()
+        playFrom(0)
+    }
+
+    fun zapLiveChannel(delta: Int) {
+        if (!canZapLiveChannels || delta == 0) return
+        val size = liveChannels.size
+        val next = ((_liveChannelIndex.value + delta) % size + size) % size
+        selectLiveChannel(next, immediate = false)
+    }
+
+    fun selectLiveChannel(index: Int, immediate: Boolean = true) {
+        if (!canZapLiveChannels) return
+        val targetIndex = index.coerceIn(0, liveChannels.lastIndex)
+        val target = liveChannels[targetIndex]
+        _liveChannelIndex.value = targetIndex
+        _title.value = target.displayTitle
+        holder.setLastLiveChannelKey(target.key)
+        zapJob?.cancel()
+        if (immediate || zapDebounceMs <= 0L) {
+            tuneLiveChannel(target)
+        } else {
+            zapJob = viewModelScope.launch {
+                delay(zapDebounceMs)
+                tuneLiveChannel(target)
+            }
+        }
+    }
+
+    private fun tuneLiveChannel(channel: LiveChannelEntry) {
+        val currentBusy = _player.value != null || playerCreationJob?.isActive == true || resolveJob?.isActive == true
+        if (activeLiveChannelKey == channel.key && currentBusy) return
+        resolveJob?.cancel()
+        resolveJob = null
+        playerCreationJob?.cancel()
+        playerCreationJob = null
+        playerGeneration++
+        earlyPreparationPending = null
+        _player.value?.let(::releasePlayer)
+        _player.value = null
+        _videoInfo.value = null
+        activeLiveChannelKey = channel.key
+        queueSnapshot = channel.sources
+        sourceFailover = createSourceFailover(queueSnapshot)
+        currentSource = null
+        currentSourceId = null
+        resolvedUrl = null
+        playingFileName = null
+        trackSelectionToRestore = null
+        playbackRetries = 0
+        if (queueSnapshot.isEmpty()) {
+            _uiState.value = PlayerUiState.Error(texts.get(StringsR.string.player_no_source_selected))
+            return
+        }
+        _uiState.value = PlayerUiState.Resolving(texts.get(StringsR.string.player_live_tuning), 1, 1)
         playFrom(0)
     }
 
@@ -253,8 +324,11 @@ class PlayerViewModel @Inject constructor(
     }
 
     private fun playFrom(from: Int) {
-        viewModelScope.launch {
+        resolveJob?.cancel()
+        val generation = playerGeneration
+        resolveJob = viewModelScope.launch {
             sourceFailover.resolve(from).collect { event ->
+                if (generation != playerGeneration) return@collect
                 when (event) {
                     is SourceResolutionEvent.Resolving -> {
                         _uiState.value = PlayerUiState.Resolving(event.message, event.attempt, event.total)
@@ -527,6 +601,8 @@ class PlayerViewModel @Inject constructor(
     fun onStop() {
         playbackVisible = false
         subtitleCoordinator.onPlaybackStopped()
+        zapJob?.cancel()
+        zapJob = null
         playerGeneration++
         playerCreationJob?.cancel()
         playerCreationJob = null
@@ -545,6 +621,11 @@ class PlayerViewModel @Inject constructor(
     fun onStart() {
         playbackVisible = true
         if (_player.value != null || playerCreationJob?.isActive == true) return
+        val selectedLive = if (isLive) liveChannels.getOrNull(_liveChannelIndex.value) else null
+        if (selectedLive != null && (resolvedUrl == null || activeLiveChannelKey != selectedLive.key)) {
+            tuneLiveChannel(selectedLive)
+            return
+        }
         val url = resolvedUrl ?: return
         launchPlayer(url, if (isLive) C.TIME_UNSET else resumePositionMs)
     }
@@ -768,6 +849,8 @@ class PlayerViewModel @Inject constructor(
 
     override fun onCleared() {
         playbackVisible = false
+        zapJob?.cancel()
+        resolveJob?.cancel()
         playerGeneration++
         playerCreationJob?.cancel()
         earlyPreparationPending = null
@@ -786,6 +869,7 @@ class PlayerViewModel @Inject constructor(
         const val AFTER_CREDITS_SLACK_MS = 30_000L
         const val MIN_EPISODE_MS = 5 * 60_000L
         const val CATALOG_REFRESH_DELAY_MS = 30_000L
+        const val ZAP_DEBOUNCE_MS = 300L
     }
 
     private fun isHttp403(error: Throwable): Boolean =

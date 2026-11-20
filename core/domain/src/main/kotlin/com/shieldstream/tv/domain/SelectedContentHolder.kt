@@ -1,6 +1,7 @@
 package com.shieldstream.tv.domain
 
 import com.shieldstream.tv.model.CatalogItem
+import com.shieldstream.tv.model.LiveChannelEntry
 import com.shieldstream.tv.model.PlaybackMedia
 import com.shieldstream.tv.model.StreamSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +27,8 @@ data class PlaybackRequest(
     val media: PlaybackMedia? = null,
     val next: NextEpisode? = null,
     val isLive: Boolean = false,
+    val liveChannels: List<LiveChannelEntry> = emptyList(),
+    val liveChannelIndex: Int = 0,
     val requestedAtNs: Long = System.nanoTime(),
 )
 
@@ -37,12 +40,19 @@ class SelectedContentHolder {
     val playback: StateFlow<PlaybackRequest?> = _playback.asStateFlow()
 
     @Volatile private var nextRequested: NextEpisode? = null
+    @Volatile private var lastLiveChannelKey: String? = null
 
     fun requestNext(next: NextEpisode) {
         nextRequested = next
     }
 
     fun consumeNextRequest(): NextEpisode? = nextRequested.also { nextRequested = null }
+
+    fun setLastLiveChannelKey(key: String?) {
+        lastLiveChannelKey = key
+    }
+
+    fun consumeLastLiveChannelKey(): String? = lastLiveChannelKey.also { lastLiveChannelKey = null }
 
     private val _prefetch = MutableStateFlow<NextEpisode?>(null)
     val prefetch: StateFlow<NextEpisode?> = _prefetch.asStateFlow()
@@ -55,6 +65,7 @@ class SelectedContentHolder {
         _details.value = DetailsRequest(item, target, playImmediately)
         _playback.value = null
         _prefetch.value = null
+        lastLiveChannelKey = null
     }
 
     fun playQueue(
@@ -65,8 +76,21 @@ class SelectedContentHolder {
         media: PlaybackMedia? = null,
         next: NextEpisode? = null,
         isLive: Boolean = false,
+        liveChannels: List<LiveChannelEntry> = emptyList(),
+        liveChannelIndex: Int = 0,
         requestedAtNs: Long = System.nanoTime(),
     ) {
-        _playback.value = PlaybackRequest(sources, label, progressKey, fromStart, media, next, isLive, requestedAtNs)
+        _playback.value = PlaybackRequest(
+            sources = sources,
+            label = label,
+            progressKey = progressKey,
+            fromStart = fromStart,
+            media = media,
+            next = next,
+            isLive = isLive,
+            liveChannels = liveChannels,
+            liveChannelIndex = liveChannelIndex,
+            requestedAtNs = requestedAtNs,
+        )
     }
 }

@@ -7,6 +7,7 @@ import com.shieldstream.tv.domain.RtveLivePlaybackResolver
 import com.shieldstream.tv.model.Lang
 import com.shieldstream.tv.model.LiveBlockReason
 import com.shieldstream.tv.model.LiveChannel
+import com.shieldstream.tv.model.LiveChannelEntry
 import com.shieldstream.tv.model.LivePlaybackDecision
 import com.shieldstream.tv.model.LiveTvSection
 import com.shieldstream.tv.strings.R as StringsR
@@ -31,6 +32,11 @@ sealed interface LiveTvUiState {
     ) : LiveTvUiState
     data class Error(val message: String) : LiveTvUiState
 }
+
+data class LiveLineupSelection(
+    val channels: List<LiveChannelEntry>,
+    val index: Int,
+)
 
 @HiltViewModel
 class LiveTvViewModel @Inject constructor(
@@ -77,6 +83,36 @@ class LiveTvViewModel @Inject constructor(
                 null
             }
         }
+
+    fun buildPlaybackLineup(selected: LiveChannel): LiveLineupSelection? {
+        val ready = resolvePlayback(selected) ?: return null
+        val selectedEntry = selected.toEntry(ready)
+        val sections = (_uiState.value as? LiveTvUiState.Content)?.sections.orEmpty()
+        val entries = sections
+            .flatMap { it.channels }
+            .distinctBy { it.key }
+            .mapNotNull { channel ->
+                (resolver.resolve(channel) as? LivePlaybackDecision.Ready)?.let { channel.toEntry(it) }
+            }
+        val index = entries.indexOfFirst { it.key == selected.key }
+        return if (index < 0) {
+            LiveLineupSelection(listOf(selectedEntry), 0)
+        } else {
+            LiveLineupSelection(entries, index)
+        }
+    }
+
+    private fun LiveChannel.toEntry(ready: LivePlaybackDecision.Ready): LiveChannelEntry {
+        val channelLabel = category
+            ?.takeIf { it.isNotBlank() && !it.equals(title, ignoreCase = true) }
+        return LiveChannelEntry(
+            key = key,
+            title = title,
+            channelName = channelLabel,
+            logoUrl = logoUrl,
+            sources = ready.sources,
+        )
+    }
 
     private fun load(forceRefresh: Boolean, silent: Boolean) {
         if (!silent) loadJob?.cancel()

@@ -26,7 +26,7 @@ import com.shieldstream.tv.model.Category
 import com.shieldstream.tv.model.ContinueInfo
 import com.shieldstream.tv.model.Episode
 import com.shieldstream.tv.model.HomeFilter
-import com.shieldstream.tv.model.StreamSource
+import com.shieldstream.tv.model.LiveChannelEntry
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.shieldstream.tv.ui.component.NavRail
 import com.shieldstream.tv.ui.component.NavTab
@@ -43,7 +43,8 @@ fun MainScreen(
     onOpenNewEpisode: (CatalogItem, Episode) -> Unit,
     onUpNext: (CatalogItem, Episode) -> Unit,
     onOpenSettings: () -> Unit,
-    onPlayLive: (List<StreamSource>, String) -> Unit = { _, _ -> },
+    onPlayLive: (List<LiveChannelEntry>, Int) -> Unit = { _, _ -> },
+    consumeLastLiveChannelKey: () -> String? = { null },
     profileInitial: String? = null,
     profileAvatar: Int = 0,
     kidsProfile: Boolean = false,
@@ -116,7 +117,10 @@ fun MainScreen(
                         when (tab) {
                             NavTab.SEARCH -> SearchScreen(onItemClick = onOpenItem)
                             NavTab.EPISODES -> EpisodeCenterScreen(onOpenEpisode = onOpenNewEpisode, viewModel = episodeCenter)
-                            NavTab.LIVE -> LiveTvScreen(onPlayLive = onPlayLive)
+                            NavTab.LIVE -> LiveTvScreen(
+                                onPlayLive = onPlayLive,
+                                consumeLastLiveChannelKey = consumeLastLiveChannelKey,
+                            )
                             else -> saveable.SaveableStateProvider("tab_${tab.name}") { MyListScreen(onItemClick = onOpenItem) }
                         }
                     }

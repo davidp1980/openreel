@@ -36,6 +36,20 @@ data class LiveTvSection(
     val channels: List<LiveChannel>,
 )
 
+data class LiveChannelEntry(
+    val key: String,
+    val title: String,
+    val channelName: String? = null,
+    val logoUrl: String? = null,
+    val sources: List<StreamSource>,
+) {
+    val displayTitle: String
+        get() = listOfNotNull(
+            channelName?.takeIf { it.isNotBlank() },
+            title.takeIf { it.isNotBlank() },
+        ).distinct().joinToString(" · ").ifBlank { key }
+}
+
 enum class LiveBlockReason {
     GEO_RESTRICTED,
     NOT_STARTED_YET,

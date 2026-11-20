@@ -110,4 +110,46 @@ class LiveTvViewModelTest {
         assertNotNull(ready)
         assertTrue(ready!!.sources.isNotEmpty())
     }
+
+    @Test
+    fun `buildPlaybackLineup flattens playable channels, skips blocked ones, and keeps selected index`() = runTest {
+        val sections = listOf(
+            LiveTvSection(
+                id = "main",
+                title = "Live now",
+                channels = listOf(
+                    LiveChannel(id = "1", assetId = "10", title = "Telediario", category = "La 1"),
+                    LiveChannel(id = "2", assetId = "20", title = "Geo", allowedInCountry = false),
+                    LiveChannel(id = "3", assetId = "30", title = "Saber y ganar", category = "La 2"),
+                ),
+            ),
+            LiveTvSection(
+                id = "thematic",
+                title = "24/7",
+                channels = listOf(
+                    LiveChannel(id = "4", assetId = "40", title = "Somos Cine", category = "Somos Cine"),
+                    LiveChannel(id = "3", assetId = "30", title = "Saber y ganar duplicate", category = "La 2"),
+                ),
+            ),
+        )
+        val repository = mockk<LiveTvRepository> {
+            coEvery { loadMainSections(any()) } returns listOf(sections[0])
+            coEvery { loadThematicChannels(any()) } returns sections[1].channels
+        }
+        val viewModel = LiveTvViewModel(repository, RtveLivePlaybackResolver { 1_000L }, texts)
+
+        viewModel.activate()
+
+        val selected = sections[0].channels[2]
+        val lineup = viewModel.buildPlaybackLineup(selected)
+        assertNotNull(lineup)
+        assertEquals(1, lineup!!.index)
+        assertEquals(listOf("1_10", "3_30", "4_40"), lineup.channels.map { it.key })
+        assertEquals("La 2 · Saber y ganar", lineup.channels[1].displayTitle)
+        assertEquals("Somos Cine", lineup.channels[2].displayTitle)
+
+        val blocked = viewModel.buildPlaybackLineup(sections[0].channels[1])
+        assertNull(blocked)
+        assertEquals("Geo-blocked", viewModel.notice.value)
+    }
 }

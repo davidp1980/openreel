@@ -92,4 +92,13 @@
     <string name="player_back_to_return_to_live">Back to return to live TV</string>
     <string name="player_audio_original_version">Original version</string>
     <string name="player_audio_description">Audio description</string>
+    <string name="player_live_tuning">Tuning channel…</string>
+    <string name="player_live_zap_hint">▲ ▼ Switch channel · OK Controls · ◀ ▶ 10 s</string>
+    <string name="player_live_error_zap_hint">Press ▲ ▼ to switch channels · OK Channel list · Back to return</string>
+    <string name="player_live_channels_action">Channels (%1$d)</string>
+    <string name="player_live_channels_title">Live channels</string>
+    <string name="player_live_channels_hint">▲ ▼ Browse · OK Watch · Back close</string>
+    <string name="player_live_tracks_action">Audio &amp; subtitles</string>
+    <string name="player_live_jump_to_live">Jump to live</string>
+    <string name="player_live_channel_position">%1$d / %2$d</string>
 </resources>
