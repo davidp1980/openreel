@@ -106,8 +106,11 @@ class LiveTvViewModel @Inject constructor(
     }
 
     private fun LiveChannel.toEntry(ready: LivePlaybackDecision.Ready): LiveChannelEntry {
-        val channelLabel = category
-            ?.takeIf { it.isNotBlank() && !it.equals(title, ignoreCase = true) }
+        val channelLabel = if (directUrls.isNotEmpty()) {
+            null
+        } else {
+            category?.takeIf { it.isNotBlank() && !it.equals(title, ignoreCase = true) }
+        }
         return LiveChannelEntry(
             key = key,
             title = title,
