@@ -12,6 +12,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
@@ -29,23 +35,26 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusTarget
@@ -53,11 +62,13 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -103,17 +114,22 @@ import com.shieldstream.tv.ui.theme.LocalHighResBackdrops
 import com.shieldstream.tv.model.BackdropUrls
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.snapshots.Snapshot
-import java.util.Locale
+import kotlin.math.abs
 
 /** Start inset for browse content. Home overrides it so content clears the navigation rail. */
 internal val LocalContentStart = staticCompositionLocalOf { AppSpacing.ScreenEdge }
 private val RowBackground = AppColors.Background
+private val RowHeaderHeight = 140.dp
+private val RowPivotLeading = 46.dp
+private val CategoryChipBottomInset = 16.dp
 
 internal enum class UpNextBadge { UP_NEXT, NEW_EPISODE, NEW_SEASON }
 
@@ -207,10 +223,95 @@ fun HomeScreen(
     }
 }
 
-private enum class TopFocus { HERO, CHIPS }
+internal enum class HomeFocusZone { HERO, CHIPS, ROWS }
 private data class ItemMenu(val row: CatalogRow, val virtual: Int, val item: CatalogItem)
 private data class UpNextMenu(val row: CatalogRow, val virtual: Int, val item: CatalogItem, val episode: Episode)
 private data class PendingFocus(val rowId: String, val itemKey: String?, val fallbackKey: String)
+
+internal fun initialHomeZone(
+    hasContinue: Boolean,
+    hasFeatured: Boolean,
+    hasCategories: Boolean,
+): HomeFocusZone = when {
+    hasContinue -> HomeFocusZone.ROWS
+    hasFeatured -> HomeFocusZone.HERO
+    hasCategories -> HomeFocusZone.CHIPS
+    else -> HomeFocusZone.ROWS
+}
+
+internal data class HomeScrollVisuals(
+    val billboardAlpha: Float,
+    val heroInfoAlpha: Float,
+    val clipRowsAtHeader: Boolean,
+)
+
+internal fun homeScrollVisuals(scrollPx: Float, transitionDistancePx: Float): HomeScrollVisuals {
+    if (transitionDistancePx <= 0f) {
+        return HomeScrollVisuals(billboardAlpha = 0f, heroInfoAlpha = 1f, clipRowsAtHeader = true)
+    }
+    val progress = (scrollPx / transitionDistancePx).coerceIn(0f, 1f)
+    return HomeScrollVisuals(
+        billboardAlpha = (1f - progress / 0.72f).coerceIn(0f, 1f),
+        heroInfoAlpha = ((progress - 0.55f) / 0.35f).coerceIn(0f, 1f),
+        clipRowsAtHeader = progress >= 0.75f,
+    )
+}
+
+private fun readHomeScrollVisuals(
+    listState: LazyListState,
+    hasBillboard: Boolean,
+    transitionDistancePx: Int,
+): HomeScrollVisuals {
+    val scrollPx = when {
+        !hasBillboard -> transitionDistancePx.toFloat()
+        listState.firstVisibleItemIndex > 0 -> transitionDistancePx.toFloat()
+        else -> listState.firstVisibleItemScrollOffset.toFloat()
+    }
+    return homeScrollVisuals(scrollPx, transitionDistancePx.toFloat())
+}
+
+internal fun homeBringIntoViewDistance(
+    zone: HomeFocusZone,
+    offset: Float,
+    size: Float,
+    containerSize: Float,
+    rowCardPivotPx: Float,
+    chipBottomInsetPx: Float,
+): Float = when (zone) {
+    HomeFocusZone.HERO -> offset
+    HomeFocusZone.CHIPS -> {
+        val target = (containerSize - chipBottomInsetPx - abs(size)).coerceAtLeast(0f)
+        offset - target
+    }
+    HomeFocusZone.ROWS -> {
+        val childSize = abs(size)
+        val target = if (childSize <= containerSize && containerSize - rowCardPivotPx < childSize) {
+            containerSize - childSize
+        } else {
+            rowCardPivotPx
+        }
+        offset - target
+    }
+}
+
+private class FocusZoneHolder(var zone: HomeFocusZone)
+
+@OptIn(ExperimentalFoundationApi::class)
+private class HomeBringIntoViewSpec(
+    private val zoneHolder: FocusZoneHolder,
+    private val rowCardPivotPx: Float,
+    private val chipBottomInsetPx: Float,
+) : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+        homeBringIntoViewDistance(
+            zone = zoneHolder.zone,
+            offset = offset,
+            size = size,
+            containerSize = containerSize,
+            rowCardPivotPx = rowCardPivotPx,
+            chipBottomInsetPx = chipBottomInsetPx,
+        )
+}
 
 @Composable
 private fun HomeContent(
@@ -231,129 +332,27 @@ private fun HomeContent(
     preferRailFocus: Boolean,
     onRailFocusConsumed: () -> Unit,
 ) {
-    var inRows by rememberSaveable { mutableStateOf(rows.any { it.style == RowStyle.CONTINUE }) }
-    var topFocus by rememberSaveable { mutableStateOf(TopFocus.HERO) }
-    val saveable = rememberSaveableStateHolder()
-    // Swapping the rows view and the billboard disposes the focused item, and the new view only
-    // requests focus a frame later. Park focus on this holder meanwhile; otherwise it falls to the
-    // navigation rail, which expands and collapses visibly.
-    var parkingFocus by remember { mutableStateOf(false) }
-    val parkingRequester = remember { FocusRequester() }
-    fun switchView(change: () -> Unit) {
-        parkingFocus = true
-        change()
-    }
-    LaunchedEffect(parkingFocus) {
-        if (parkingFocus) runCatching { parkingRequester.requestFocus() }
-    }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .focusRequester(parkingRequester)
-            .onFocusChanged { if (it.hasFocus && !it.isFocused) parkingFocus = false }
-            .focusProperties { canFocus = parkingFocus }
-            .focusTarget(),
-    ) {
-        if (inRows && rows.isNotEmpty()) saveable.SaveableStateProvider("rows") {
-            RowsBrowser(
-                rows = rows,
-                onItemClick = onItemClick,
-                onContinueClick = onContinueClick,
-                onNewEpisodeClick = onNewEpisodeClick,
-                onUpNextClick = onUpNextClick,
-                onRemoveContinue = onRemoveContinue,
-                onRemoveMyList = onRemoveMyList,
-                onMarkUpNextWatched = onMarkUpNextWatched,
-                onRemoveUpNext = onRemoveUpNext,
-                onExitTop = {
-                    topFocus = TopFocus.CHIPS
-                    switchView { inRows = false }
-                },
-                onBack = {
-                    topFocus = if (featured.isNotEmpty()) TopFocus.HERO else TopFocus.CHIPS
-                    switchView { inRows = false }
-                },
-            )
-        } else saveable.SaveableStateProvider("billboard") {
-            Billboard(
-                featured = featured,
-                categories = categories,
-                initialFocus = topFocus,
-                onFocusChange = { topFocus = it },
-                onItemClick = onItemClick,
-                onOpenCategory = onOpenCategory,
-                onEnterRows = { if (rows.isNotEmpty()) switchView { inRows = true } },
-                railRequester = railRequester,
-                focusRail = focusRail,
-                preferRailFocus = preferRailFocus,
-                onRailFocusConsumed = onRailFocusConsumed,
-            )
-        }
-    }
-}
-
-@Composable
-private fun Billboard(
-    featured: List<FeaturedItem>,
-    categories: List<Category>,
-    initialFocus: TopFocus,
-    onFocusChange: (TopFocus) -> Unit,
-    onItemClick: (CatalogItem) -> Unit,
-    onOpenCategory: (Category) -> Unit,
-    onEnterRows: () -> Unit,
-    railRequester: FocusRequester,
-    focusRail: () -> Unit,
-    preferRailFocus: Boolean,
-    onRailFocusConsumed: () -> Unit,
-) {
-    val heroRequester = remember { FocusRequester() }
-    val chipsRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        when {
-            preferRailFocus -> {
-                focusRail()
-                onRailFocusConsumed()
-            }
-            initialFocus == TopFocus.HERO && featured.isNotEmpty() -> heroRequester.requestFocusWithRetry()
-            else -> chipsRequester.requestFocusWithRetry()
-        }
-    }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(AppColors.Background),
-    ) {
-        if (featured.isNotEmpty()) {
-            // The hero starts after the collapsed rail so Left/Right move geometrically between them.
-            FeaturedCarousel(
-                items = featured,
-                onOpen = onItemClick,
-                contentStart = RailContentStart - RailCollapsedWidth,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = RailCollapsedWidth)
-                    .focusRequester(heroRequester)
-                    .focusProperties {
-                        left = railRequester
-                        down = chipsRequester
-                    }
-                    .onFocusChanged { if (it.isFocused) onFocusChange(TopFocus.HERO) },
-            )
-        }
-        CategoryChips(
-            categories = categories,
-            onOpen = onOpenCategory,
-            requester = chipsRequester,
-            upRequester = if (featured.isNotEmpty()) heroRequester else FocusRequester.Default,
-            onFocused = { onFocusChange(TopFocus.CHIPS) },
-            onDown = onEnterRows,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .background(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.9f)))
-                .padding(bottom = 6.dp),
-        )
-    }
+    CatalogFeed(
+        rows = rows,
+        featured = featured,
+        categories = categories,
+        onItemClick = onItemClick,
+        onContinueClick = onContinueClick,
+        onNewEpisodeClick = onNewEpisodeClick,
+        onUpNextClick = onUpNextClick,
+        onOpenCategory = onOpenCategory,
+        onRemoveContinue = onRemoveContinue,
+        onRemoveMyList = onRemoveMyList,
+        onMarkUpNextWatched = onMarkUpNextWatched,
+        onRemoveUpNext = onRemoveUpNext,
+        railRequester = railRequester,
+        focusRail = focusRail,
+        preferRailFocus = preferRailFocus,
+        onRailFocusConsumed = onRailFocusConsumed,
+        onExitTop = null,
+        onBack = null,
+        header = null,
+    )
 }
 
 @Composable
@@ -371,8 +370,71 @@ internal fun RowsBrowser(
     onBack: () -> Unit,
     header: String? = null,
 ) {
-    val savedFocus = rememberSaveable { mutableStateOf(firstKey(rows.first())) }
-    fun validKey(key: String) = if (findByKey(rows, key) != null) key else firstKey(rows.first())
+    CatalogFeed(
+        rows = rows,
+        featured = emptyList(),
+        categories = emptyList(),
+        onItemClick = onItemClick,
+        onContinueClick = onContinueClick,
+        onNewEpisodeClick = onNewEpisodeClick,
+        onUpNextClick = onUpNextClick,
+        onOpenCategory = {},
+        onRemoveContinue = onRemoveContinue,
+        onRemoveMyList = onRemoveMyList,
+        onMarkUpNextWatched = onMarkUpNextWatched,
+        onRemoveUpNext = onRemoveUpNext,
+        railRequester = FocusRequester.Default,
+        focusRail = {},
+        preferRailFocus = false,
+        onRailFocusConsumed = {},
+        onExitTop = onExitTop,
+        onBack = onBack,
+        header = header,
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun CatalogFeed(
+    rows: List<CatalogRow>,
+    featured: List<FeaturedItem>,
+    categories: List<Category>,
+    onItemClick: (CatalogItem) -> Unit,
+    onContinueClick: ((CatalogItem, ContinueInfo) -> Unit)?,
+    onNewEpisodeClick: ((CatalogItem, Episode) -> Unit)?,
+    onUpNextClick: ((CatalogItem, Episode) -> Unit)?,
+    onOpenCategory: (Category) -> Unit,
+    onRemoveContinue: (CatalogItem) -> Unit,
+    onRemoveMyList: (CatalogItem) -> Unit,
+    onMarkUpNextWatched: ((CatalogItem, Episode) -> Unit)?,
+    onRemoveUpNext: ((CatalogItem, Episode) -> Unit)?,
+    railRequester: FocusRequester,
+    focusRail: () -> Unit,
+    preferRailFocus: Boolean,
+    onRailFocusConsumed: () -> Unit,
+    onExitTop: (() -> Unit)?,
+    onBack: (() -> Unit)?,
+    header: String?,
+) {
+    val hasBillboard = featured.isNotEmpty() || categories.isNotEmpty()
+    var activeZone by rememberSaveable(hasBillboard) {
+        mutableStateOf(
+            if (hasBillboard) {
+                initialHomeZone(
+                    hasContinue = rows.any { it.style == RowStyle.CONTINUE },
+                    hasFeatured = featured.isNotEmpty(),
+                    hasCategories = categories.isNotEmpty(),
+                )
+            } else {
+                HomeFocusZone.ROWS
+            },
+        )
+    }
+    val focusZoneHolder = remember(hasBillboard) { FocusZoneHolder(activeZone) }
+    val billboardFocusable = hasBillboard && activeZone != HomeFocusZone.ROWS
+
+    val savedFocus = rememberSaveable { mutableStateOf(defaultFocusKey(rows)) }
+    fun validKey(key: String) = if (findByKey(rows, key) != null) key else defaultFocusKey(rows)
     var restoreKey by remember { mutableStateOf(Snapshot.withoutReadObservation { validKey(savedFocus.value) }) }
     var lastVerticalRepeat by remember { mutableStateOf(0L) }
     var pendingFocus by remember { mutableStateOf<PendingFocus?>(null) }
@@ -380,151 +442,406 @@ internal fun RowsBrowser(
     var myListMenu by remember { mutableStateOf<ItemMenu?>(null) }
     var upNextMenu by remember { mutableStateOf<UpNextMenu?>(null) }
 
-    var hero by remember { mutableStateOf(Snapshot.withoutReadObservation { findByKey(rows, restoreKey) ?: rows.first().items.first() }) }
+    var hero by remember {
+        mutableStateOf(Snapshot.withoutReadObservation { findByKey(rows, restoreKey) ?: defaultHero(rows) })
+    }
     LaunchedEffect(rows) {
         snapshotFlow { savedFocus.value }.collectLatest { key ->
             delay(300)
-            hero = findByKey(rows, validKey(key)) ?: rows.first().items.first()
+            hero = findByKey(rows, validKey(key)) ?: defaultHero(rows)
         }
     }
 
     val contentStart = LocalContentStart.current
+    val heroRequester = remember { FocusRequester() }
+    val chipsRequester = remember { FocusRequester() }
     val restoreRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        restoreRequester.requestFocusWithRetry()
+    // Moving between the billboard and the rows may swap focus across items that are not attached
+    // at the same instant. Park focus on this holder meanwhile; otherwise it falls to the
+    // navigation rail, which expands and collapses visibly.
+    var parkingFocus by remember { mutableStateOf(false) }
+    val parkingRequester = remember { FocusRequester() }
+    LaunchedEffect(parkingFocus) {
+        if (parkingFocus) runCatching { parkingRequester.requestFocus() }
     }
-    LaunchedEffect(rows) {
-        val pending = pendingFocus ?: return@LaunchedEffect
-        restoreKey = pending.itemKey
-            ?.let { itemKey -> focusKeyForItem(rows, pending.rowId, itemKey) }
-            ?: pending.fallbackKey
-        savedFocus.value = restoreKey
-        restoreRequester.requestFocusWithRetry()
-        pendingFocus = null
-    }
+    val scrollScope = rememberCoroutineScope()
+    var transitionJob by remember { mutableStateOf<Job?>(null) }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(RowBackground)
-            .onBackKey(enabled = true) { onBack() }
-            .onPreviewKeyEvent { e ->
-                val vertical = e.key == Key.DirectionDown || e.key == Key.DirectionUp
-                if (e.type != KeyEventType.KeyDown || !vertical || e.nativeKeyEvent.repeatCount == 0) return@onPreviewKeyEvent false
-                val now = android.os.SystemClock.uptimeMillis()
-                if (now - lastVerticalRepeat < 130) true else { lastVerticalRepeat = now; false }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        val viewportHeight = maxHeight
+        val viewportHeightPx = with(density) { viewportHeight.roundToPx() }
+        val rowHeaderPx = with(density) { RowHeaderHeight.roundToPx() }
+        val rowCardPivotPx = with(density) { (RowHeaderHeight + RowPivotLeading).toPx() }
+        val chipBottomInsetPx = with(density) { CategoryChipBottomInset.toPx() }
+        val heroInfoSlidePx = with(density) { 12.dp.toPx() }
+        val transitionDistancePx = (viewportHeightPx - rowHeaderPx).coerceAtLeast(1)
+        val rowsStartScrollOffsetPx = (viewportHeightPx - rowHeaderPx).coerceAtLeast(0)
+        val bringIntoViewSpec = remember(focusZoneHolder, rowCardPivotPx, chipBottomInsetPx) {
+            HomeBringIntoViewSpec(focusZoneHolder, rowCardPivotPx, chipBottomInsetPx)
+        }
+
+        val listState = rememberLazyListState(
+            initialFirstVisibleItemIndex = 0,
+            initialFirstVisibleItemScrollOffset = if (hasBillboard && activeZone == HomeFocusZone.ROWS) {
+                rowsStartScrollOffsetPx
+            } else {
+                0
             },
-    ) {
-        if (!LocalLightweightUi.current) HeroBackdrop(hero)
-        Column(Modifier.fillMaxSize()) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .height(140.dp)
-                    .padding(start = contentStart, top = 24.dp, end = 320.dp),
-                verticalArrangement = Arrangement.Bottom,
-            ) {
-                header?.let {
-                    Text(
-                        text = it.uppercase(Lang.locale),
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 0.12.em,
-                        ),
-                        color = AppColors.Highlight,
-                        modifier = Modifier.padding(bottom = 6.dp),
-                    )
-                }
-                HeroInfo(item = hero)
+        )
+        val showRowsBackdrop by remember(hasBillboard, listState) {
+            derivedStateOf {
+                !hasBillboard || listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
             }
-            ProvidePivotScroll(leading = 46.dp) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                    contentPadding = PaddingValues(bottom = 260.dp),
-                ) {
-                    itemsIndexed(rows, key = { _, row -> row.id }, contentType = { _, row -> row.style }) { rowIndex, row ->
-                        CatalogRowView(
-                            row = row,
-                            focusKey = restoreKey,
-                            restoreRequester = restoreRequester,
-                            onFocused = { virtual -> savedFocus.value = keyOf(row, virtual) },
-                            onItemClick = onItemClick,
-                            onNewEpisodeClick = onNewEpisodeClick,
-                            onContinueClick = onContinueClick,
-                            onUpNextClick = onUpNextClick,
-                            onContinueMenu = { virtual, item -> continueMenu = ItemMenu(row, virtual, item) },
-                            onMyListMenu = { virtual, item -> myListMenu = ItemMenu(row, virtual, item) },
-                            onUpNextMenu = { virtual, item, episode -> upNextMenu = UpNextMenu(row, virtual, item, episode) },
-                            modifier = if (rowIndex == 0 && onExitTop != null) {
-                                Modifier.onPreviewKeyEvent { event ->
-                                    if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
-                                        onExitTop()
-                                        true
-                                    } else {
-                                        false
-                                    }
-                                }
-                            } else {
-                                Modifier
-                            },
-                        )
+        }
+
+        fun enterRows() {
+            if (rows.isEmpty() || activeZone == HomeFocusZone.ROWS) return
+            val firstRow = rows.first()
+            val firstRowPrefix = "${firstRow.id}/"
+            val targetKey = savedFocus.value.takeIf {
+                it.startsWith(firstRowPrefix) && findByKey(rows, it) != null
+            } ?: firstKey(firstRow)
+            restoreKey = targetKey
+            savedFocus.value = targetKey
+            hero = findByKey(rows, targetKey) ?: firstRow.items.firstOrNull()
+            focusZoneHolder.zone = HomeFocusZone.ROWS
+            activeZone = HomeFocusZone.ROWS
+            parkingFocus = true
+            transitionJob?.cancel()
+            transitionJob = scrollScope.launch {
+                runCatching { parkingRequester.requestFocus() }
+                if (hasBillboard && listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
+                    listState.scrollBy(1f)
+                }
+                val focused = restoreRequester.requestFocusWithRetry()
+                if (!focused && hasBillboard) {
+                    listState.animateScrollToItem(0, rowsStartScrollOffsetPx)
+                    restoreRequester.requestFocusWithRetry()
+                }
+                parkingFocus = false
+            }
+        }
+
+        fun navigateToBillboard(target: HomeFocusZone) {
+            if (!hasBillboard) return
+            val resolvedTarget = when {
+                target == HomeFocusZone.CHIPS && categories.isNotEmpty() -> HomeFocusZone.CHIPS
+                featured.isNotEmpty() -> HomeFocusZone.HERO
+                categories.isNotEmpty() -> HomeFocusZone.CHIPS
+                else -> return
+            }
+            focusZoneHolder.zone = resolvedTarget
+            activeZone = resolvedTarget
+            val targetRequester = if (resolvedTarget == HomeFocusZone.HERO) heroRequester else chipsRequester
+            parkingFocus = true
+            transitionJob?.cancel()
+            transitionJob = scrollScope.launch {
+                runCatching { parkingRequester.requestFocus() }
+                if (listState.firstVisibleItemIndex == 0) {
+                    val focused = targetRequester.requestFocusWithRetry()
+                    if (!focused) {
+                        listState.animateScrollToItem(0, 0)
+                        targetRequester.requestFocusWithRetry()
+                    }
+                } else {
+                    listState.animateScrollToItem(0, 0)
+                    targetRequester.requestFocusWithRetry()
+                }
+                parkingFocus = false
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            when {
+                preferRailFocus -> {
+                    focusRail()
+                    onRailFocusConsumed()
+                }
+                activeZone == HomeFocusZone.HERO && featured.isNotEmpty() -> {
+                    heroRequester.requestFocusWithRetry()
+                }
+                activeZone == HomeFocusZone.CHIPS && categories.isNotEmpty() -> {
+                    chipsRequester.requestFocusWithRetry()
+                }
+                else -> {
+                    val focused = restoreRequester.requestFocusWithRetry()
+                    if (!focused && rows.isNotEmpty()) {
+                        listState.scrollToItem(0, if (hasBillboard) rowsStartScrollOffsetPx else 0)
+                        restoreRequester.requestFocusWithRetry()
                     }
                 }
             }
         }
-        continueMenu?.let { menu ->
-            ContinueActions(
-                item = menu.item,
-                onDetails = {
-                    continueMenu = null
-                    onItemClick(menu.item)
-                },
-                onRemove = {
-                    pendingFocus = PendingFocus(menu.row.id, itemKey = null, fallbackKey = neighbourKey(rows, menu.row, menu.virtual))
-                    onRemoveContinue(menu.item)
-                    continueMenu = null
-                },
-                onCancel = { continueMenu = null },
-            )
+        LaunchedEffect(rows) {
+            val pending = pendingFocus ?: return@LaunchedEffect
+            restoreKey = pending.itemKey
+                ?.let { itemKey -> focusKeyForItem(rows, pending.rowId, itemKey) }
+                ?: pending.fallbackKey
+            savedFocus.value = restoreKey
+            restoreRequester.requestFocusWithRetry()
+            pendingFocus = null
         }
-        myListMenu?.let { menu ->
-            MyListActions(
-                item = menu.item,
-                onDetails = {
-                    myListMenu = null
-                    onItemClick(menu.item)
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(RowBackground)
+                .focusProperties {
+                    onEnter = {
+                        if (continueMenu == null && myListMenu == null && upNextMenu == null) {
+                            when (activeZone) {
+                                HomeFocusZone.HERO -> if (featured.isNotEmpty()) runCatching { heroRequester.requestFocus() }
+                                HomeFocusZone.CHIPS -> if (categories.isNotEmpty()) runCatching { chipsRequester.requestFocus() }
+                                HomeFocusZone.ROWS -> Unit
+                            }
+                        }
+                    }
+                }
+                .focusGroup()
+                .then(
+                    when {
+                        onBack != null -> Modifier.onBackKey(enabled = true) { onBack() }
+                        hasBillboard -> Modifier.onBackKey(enabled = activeZone == HomeFocusZone.ROWS) {
+                            navigateToBillboard(if (featured.isNotEmpty()) HomeFocusZone.HERO else HomeFocusZone.CHIPS)
+                        }
+                        else -> Modifier
+                    },
+                )
+                .onPreviewKeyEvent { e ->
+                    val vertical = e.key == Key.DirectionDown || e.key == Key.DirectionUp
+                    if (e.type != KeyEventType.KeyDown || !vertical || e.nativeKeyEvent.repeatCount == 0) return@onPreviewKeyEvent false
+                    val now = android.os.SystemClock.uptimeMillis()
+                    if (now - lastVerticalRepeat < 130) true else { lastVerticalRepeat = now; false }
                 },
-                onRemove = {
-                    pendingFocus = PendingFocus(menu.row.id, itemKey = null, fallbackKey = neighbourKey(rows, menu.row, menu.virtual))
-                    onRemoveMyList(menu.item)
-                    myListMenu = null
-                },
-                onCancel = { myListMenu = null },
-            )
-        }
-        upNextMenu?.let { menu ->
-            UpNextActions(
-                item = menu.item,
-                onDetails = {
-                    upNextMenu = null
-                    onItemClick(menu.item)
-                },
-                onMarkWatched = {
-                    pendingFocus = PendingFocus(
-                        menu.row.id,
-                        itemKey = menu.item.key,
-                        fallbackKey = neighbourKey(rows, menu.row, menu.virtual),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .focusRequester(parkingRequester)
+                    .onFocusChanged { if (it.hasFocus && !it.isFocused) parkingFocus = false }
+                    .focusProperties { canFocus = parkingFocus }
+                    .focusTarget(),
+            ) {
+                if (!LocalLightweightUi.current && showRowsBackdrop) {
+                    hero?.let { HeroBackdrop(it) }
+                }
+                CompositionLocalProvider(LocalBringIntoViewSpec provides bringIntoViewSpec) {
+                    LazyColumn(
+                        state = listState,
+                        contentPadding = PaddingValues(
+                            top = if (hasBillboard) 0.dp else RowHeaderHeight,
+                            bottom = 260.dp,
+                        ),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .drawWithContent {
+                                if (readHomeScrollVisuals(listState, hasBillboard, transitionDistancePx).clipRowsAtHeader) {
+                                    clipRect(top = rowHeaderPx.toFloat()) {
+                                        this@drawWithContent.drawContent()
+                                    }
+                                } else {
+                                    drawContent()
+                                }
+                            },
+                    ) {
+                        if (hasBillboard) {
+                            item(key = "billboard", contentType = "billboard") {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .height(viewportHeight)
+                                        .drawWithContent {
+                                            if (readHomeScrollVisuals(listState, hasBillboard, transitionDistancePx).billboardAlpha > 0.001f) {
+                                                drawContent()
+                                            }
+                                        }
+                                        .graphicsLayer {
+                                            alpha = readHomeScrollVisuals(listState, hasBillboard, transitionDistancePx).billboardAlpha
+                                        }
+                                        .background(AppColors.Background),
+                                ) {
+                                    if (featured.isNotEmpty()) {
+                                        // The hero starts after the collapsed rail so Left/Right move geometrically between them.
+                                        FeaturedCarousel(
+                                            items = featured,
+                                            onOpen = onItemClick,
+                                            contentStart = RailContentStart - RailCollapsedWidth,
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(start = RailCollapsedWidth)
+                                                .focusRequester(heroRequester)
+                                                .focusProperties {
+                                                    canFocus = billboardFocusable
+                                                    left = railRequester
+                                                    if (categories.isNotEmpty()) down = chipsRequester
+                                                }
+                                                .onPreviewKeyEvent { event ->
+                                                    if (
+                                                        categories.isEmpty() &&
+                                                        rows.isNotEmpty() &&
+                                                        event.type == KeyEventType.KeyDown &&
+                                                        event.key == Key.DirectionDown
+                                                    ) {
+                                                        enterRows()
+                                                        true
+                                                    } else {
+                                                        false
+                                                    }
+                                                }
+                                                .onFocusChanged {
+                                                    if (it.isFocused) {
+                                                        focusZoneHolder.zone = HomeFocusZone.HERO
+                                                        activeZone = HomeFocusZone.HERO
+                                                    }
+                                                },
+                                        )
+                                    }
+                                    CategoryChips(
+                                        categories = categories,
+                                        onOpen = onOpenCategory,
+                                        requester = chipsRequester,
+                                        upRequester = if (featured.isNotEmpty()) heroRequester else FocusRequester.Default,
+                                        onFocused = {
+                                            focusZoneHolder.zone = HomeFocusZone.CHIPS
+                                            activeZone = HomeFocusZone.CHIPS
+                                        },
+                                        onDown = { enterRows() },
+                                        focusable = billboardFocusable,
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .background(Brush.verticalGradient(0f to Color.Transparent, 1f to AppColors.Background))
+                                            .padding(bottom = 6.dp),
+                                    )
+                                }
+                            }
+                        }
+                        itemsIndexed(rows, key = { _, row -> row.id }, contentType = { _, row -> row.style }) { rowIndex, row ->
+                            CatalogRowView(
+                                row = row,
+                                focusKey = restoreKey,
+                                restoreRequester = restoreRequester,
+                                onFocused = { virtual ->
+                                    focusZoneHolder.zone = HomeFocusZone.ROWS
+                                    activeZone = HomeFocusZone.ROWS
+                                    savedFocus.value = keyOf(row, virtual)
+                                },
+                                onItemClick = onItemClick,
+                                onNewEpisodeClick = onNewEpisodeClick,
+                                onContinueClick = onContinueClick,
+                                onUpNextClick = onUpNextClick,
+                                onContinueMenu = { virtual, item -> continueMenu = ItemMenu(row, virtual, item) },
+                                onMyListMenu = { virtual, item -> myListMenu = ItemMenu(row, virtual, item) },
+                                onUpNextMenu = { virtual, item, episode -> upNextMenu = UpNextMenu(row, virtual, item, episode) },
+                                modifier = when {
+                                    rowIndex == 0 && onExitTop != null -> Modifier.onPreviewKeyEvent { event ->
+                                        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+                                            onExitTop()
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    rowIndex == 0 && hasBillboard -> Modifier.onPreviewKeyEvent { event ->
+                                        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+                                            navigateToBillboard(HomeFocusZone.CHIPS)
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    else -> Modifier
+                                },
+                            )
+                        }
+                    }
+                }
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(RowHeaderHeight)
+                        .drawWithContent {
+                            if (readHomeScrollVisuals(listState, hasBillboard, transitionDistancePx).heroInfoAlpha > 0.001f) {
+                                drawContent()
+                            }
+                        }
+                        .graphicsLayer {
+                            val a = readHomeScrollVisuals(listState, hasBillboard, transitionDistancePx).heroInfoAlpha
+                            alpha = a
+                            translationY = (1f - a) * heroInfoSlidePx
+                        }
+                        .padding(start = contentStart, top = 24.dp, end = 320.dp),
+                    verticalArrangement = Arrangement.Bottom,
+                ) {
+                    header?.let {
+                        Text(
+                            text = it.uppercase(Lang.locale),
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.12.em,
+                            ),
+                            color = AppColors.Highlight,
+                            modifier = Modifier.padding(bottom = 6.dp),
+                        )
+                    }
+                    hero?.let { HeroInfo(item = it) }
+                }
+                continueMenu?.let { menu ->
+                    ContinueActions(
+                        item = menu.item,
+                        onDetails = {
+                            continueMenu = null
+                            onItemClick(menu.item)
+                        },
+                        onRemove = {
+                            pendingFocus = PendingFocus(menu.row.id, itemKey = null, fallbackKey = neighbourKey(rows, menu.row, menu.virtual))
+                            onRemoveContinue(menu.item)
+                            continueMenu = null
+                        },
+                        onCancel = { continueMenu = null },
                     )
-                    onMarkUpNextWatched?.invoke(menu.item, menu.episode)
-                    upNextMenu = null
-                },
-                onRemove = {
-                    pendingFocus = PendingFocus(menu.row.id, itemKey = null, fallbackKey = neighbourKey(rows, menu.row, menu.virtual))
-                    onRemoveUpNext?.invoke(menu.item, menu.episode)
-                    upNextMenu = null
-                },
-                onCancel = { upNextMenu = null },
-            )
+                }
+                myListMenu?.let { menu ->
+                    MyListActions(
+                        item = menu.item,
+                        onDetails = {
+                            myListMenu = null
+                            onItemClick(menu.item)
+                        },
+                        onRemove = {
+                            pendingFocus = PendingFocus(menu.row.id, itemKey = null, fallbackKey = neighbourKey(rows, menu.row, menu.virtual))
+                            onRemoveMyList(menu.item)
+                            myListMenu = null
+                        },
+                        onCancel = { myListMenu = null },
+                    )
+                }
+                upNextMenu?.let { menu ->
+                    UpNextActions(
+                        item = menu.item,
+                        onDetails = {
+                            upNextMenu = null
+                            onItemClick(menu.item)
+                        },
+                        onMarkWatched = {
+                            pendingFocus = PendingFocus(
+                                menu.row.id,
+                                itemKey = menu.item.key,
+                                fallbackKey = neighbourKey(rows, menu.row, menu.virtual),
+                            )
+                            onMarkUpNextWatched?.invoke(menu.item, menu.episode)
+                            upNextMenu = null
+                        },
+                        onRemove = {
+                            pendingFocus = PendingFocus(menu.row.id, itemKey = null, fallbackKey = neighbourKey(rows, menu.row, menu.virtual))
+                            onRemoveUpNext?.invoke(menu.item, menu.episode)
+                            upNextMenu = null
+                        },
+                        onCancel = { upNextMenu = null },
+                    )
+                }
+            }
         }
     }
 }
@@ -895,6 +1212,12 @@ private fun keyOf(row: CatalogRow, virtual: Int) = "${row.id}/$virtual"
 
 private fun firstKey(row: CatalogRow) = keyOf(row, firstVirtualIndex(row.items.size))
 
+private fun defaultFocusKey(rows: List<CatalogRow>): String =
+    rows.firstOrNull()?.let(::firstKey).orEmpty()
+
+private fun defaultHero(rows: List<CatalogRow>): CatalogItem? =
+    rows.firstOrNull()?.items?.firstOrNull()
+
 private fun findByKey(rows: List<CatalogRow>, key: String?): CatalogItem? {
     if (key == null) return null
     val row = rows.firstOrNull { it.id == key.substringBeforeLast('/') } ?: return null
@@ -914,7 +1237,7 @@ internal fun focusKeyForItem(rows: List<CatalogRow>, rowId: String, itemKey: Str
 private fun neighbourKey(rows: List<CatalogRow>, row: CatalogRow, virtual: Int): String {
     val newSize = row.items.size - 1
     if (newSize <= 0) {
-        val below = rows.getOrNull(rows.indexOf(row) + 1) ?: rows.first()
+        val below = rows.getOrNull(rows.indexOf(row) + 1) ?: rows.firstOrNull() ?: return ""
         return firstKey(below)
     }
     val index = minOf(virtual % row.items.size, newSize - 1)

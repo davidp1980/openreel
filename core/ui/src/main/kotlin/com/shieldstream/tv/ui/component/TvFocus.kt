@@ -71,12 +71,13 @@ fun ProvideMinimalScroll(margin: Dp = 0.dp, content: @Composable () -> Unit) {
 }
 
 /** Requests focus after layout and tolerates a target that is still being attached during a view swap. */
-suspend fun FocusRequester.requestFocusWithRetry() {
+suspend fun FocusRequester.requestFocusWithRetry(): Boolean {
     withFrameNanos { }
     repeat(4) { attempt ->
-        if (runCatching { requestFocus() }.getOrDefault(false)) return
+        if (runCatching { requestFocus() }.getOrDefault(false)) return true
         if (attempt < 3) delay(60)
     }
+    return false
 }
 
 /**

@@ -346,9 +346,10 @@ internal fun CategoryChips(
     onFocused: () -> Unit,
     onDown: () -> Unit,
     modifier: Modifier = Modifier,
+    focusable: Boolean = true,
 ) {
     if (categories.isEmpty()) return
-    key(categories) { CategoryChipsRow(categories, onOpen, requester, upRequester, onFocused, onDown, modifier) }
+    key(categories) { CategoryChipsRow(categories, onOpen, requester, upRequester, onFocused, onDown, modifier, focusable) }
 }
 
 @Composable
@@ -360,6 +361,7 @@ private fun CategoryChipsRow(
     onFocused: () -> Unit,
     onDown: () -> Unit,
     modifier: Modifier,
+    focusable: Boolean,
 ) {
     val state = rememberLoopingRowState(categories.size)
     var focusedVirtual by rememberSaveable { mutableIntStateOf(state.firstVisibleItemIndex) }
@@ -389,7 +391,10 @@ private fun CategoryChipsRow(
                         onFocused()
                     },
                     modifier = (if (virtual == focusedVirtual) Modifier.focusRequester(requester) else Modifier)
-                        .focusProperties { up = upRequester },
+                        .focusProperties {
+                            canFocus = focusable
+                            up = upRequester
+                        },
                 )
             }
         }

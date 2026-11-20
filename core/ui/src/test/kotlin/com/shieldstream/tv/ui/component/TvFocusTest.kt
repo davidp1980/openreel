@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.delay
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
@@ -60,11 +62,12 @@ class TvFocusTest {
     @Test
     fun `focus retry waits for a target attached after the first request`() {
         var targetFocused by mutableStateOf(false)
+        var requestResult by mutableStateOf<Boolean?>(null)
         composeRule.setContent {
             val requester = remember { FocusRequester() }
             var attached by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) {
-                requester.requestFocusWithRetry()
+                requestResult = requester.requestFocusWithRetry()
             }
             LaunchedEffect(Unit) {
                 delay(100)
@@ -87,7 +90,23 @@ class TvFocusTest {
             )
         }
 
-        composeRule.waitUntil(timeoutMillis = 2_000) { targetFocused }
+        composeRule.waitUntil(timeoutMillis = 2_000) { targetFocused && requestResult == true }
+        assertTrue(requestResult == true)
+    }
+
+    @Test
+    fun `focus retry returns false when the target is never attached`() {
+        var requestResult by mutableStateOf<Boolean?>(null)
+        composeRule.setContent {
+            val requester = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                requestResult = requester.requestFocusWithRetry()
+            }
+            Box(Modifier.size(24.dp))
+        }
+
+        composeRule.waitUntil(timeoutMillis = 2_000) { requestResult != null }
+        assertFalse(requestResult!!)
     }
 
     @Test
