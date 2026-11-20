@@ -24,6 +24,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:banner="@drawable/banner"
         android:icon="@drawable/ic_launcher"
+        android:logo="@drawable/banner"
         android:label="${appLabel}"
         android:supportsRtl="true"
         android:theme="@style/Theme.OpenReel">
@@ -41,6 +42,8 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:banner="@drawable/banner"
+            android:logo="@drawable/banner"
             android:screenOrientation="landscape"
             android:launchMode="singleTask">
             <intent-filter>
