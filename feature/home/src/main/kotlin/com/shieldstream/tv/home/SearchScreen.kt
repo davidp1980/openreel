@@ -6,6 +6,7 @@ import com.shieldstream.tv.strings.R as StringsR
 import com.shieldstream.tv.strings.localizedStringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -74,6 +75,7 @@ private val QWERTY_ROWS = listOf("1234567890", "qwertyuiop", "asdfghjklñ", "zxc
 @Composable
 fun SearchScreen(
     onItemClick: (CatalogItem) -> Unit,
+    preferNavFocus: Boolean = false,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
@@ -85,6 +87,7 @@ fun SearchScreen(
     val cardRequester = remember { FocusRequester() }
     var lastCardKey by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
+        if (preferNavFocus) return@LaunchedEffect
         withFrameNanos { }
         val backOnCard = lastCardKey != null && run {
             repeat(4) {
@@ -116,7 +119,18 @@ fun SearchScreen(
         runCatching { layoutKey.requestFocus() }
     }
 
-    Row(Modifier.fillMaxSize().background(AppColors.Background)) {
+    Row(
+        Modifier
+            .fillMaxSize()
+            .background(AppColors.Background)
+            .focusProperties {
+                onEnter = {
+                    val focusedCard = lastCardKey != null && runCatching { cardRequester.requestFocus() }.getOrDefault(false)
+                    if (!focusedCard) runCatching { firstKey.requestFocus() }
+                }
+            }
+            .focusGroup(),
+    ) {
         Column(
             Modifier
                 .width(if (qwerty) 452.dp else 330.dp)

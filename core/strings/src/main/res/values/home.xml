@@ -40,6 +40,7 @@
     <string name="home_new_episodes">New episodes</string>
     <string name="home_my_list_f0348a">My list</string>
     <string name="home_recommended_for_you">Recommended for you</string>
+    <string name="home_because_you_watched">Because you watched %1$s</string>
     <string name="home_up_next">Up next</string>
     <string name="home_new_episode">New episode</string>
     <string name="home_new_season">New season</string>

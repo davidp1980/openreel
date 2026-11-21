@@ -2,6 +2,7 @@ package com.shieldstream.tv.home
 
 import com.shieldstream.tv.strings.R as StringsR
 import com.shieldstream.tv.strings.localizedStringResource
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +54,7 @@ private data class EpisodeMenu(
 @Composable
 fun EpisodeCenterScreen(
     onOpenEpisode: (CatalogItem, Episode) -> Unit,
+    preferNavFocus: Boolean = false,
     viewModel: EpisodeCenterViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -60,6 +63,11 @@ fun EpisodeCenterScreen(
     var cardToRestore by remember { mutableStateOf<String?>(null) }
     var episodeMenu by remember { mutableStateOf<EpisodeMenu?>(null) }
     LaunchedEffect(Unit) { viewModel.activate() }
+    LaunchedEffect(state is EpisodeCenterUiState.Content) {
+        if (!preferNavFocus && state is EpisodeCenterUiState.Content) {
+            cardRequester.requestFocusWithRetry()
+        }
+    }
     LaunchedEffect(cardToRestore) {
         if (cardToRestore == null) return@LaunchedEffect
         cardRequester.requestFocusWithRetry()
@@ -80,7 +88,14 @@ fun EpisodeCenterScreen(
         episodeMenu = null
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .focusProperties {
+                onEnter = { runCatching { cardRequester.requestFocus() } }
+            }
+            .focusGroup(),
+    ) {
     Column(Modifier.fillMaxSize().padding(start = 48.dp, end = 36.dp, top = 24.dp)) {
         Text(
             text = localizedStringResource(StringsR.string.home_episodes),
@@ -98,6 +113,9 @@ fun EpisodeCenterScreen(
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 } else {
+                    val activeCardKey = lastCardKey?.takeIf { key ->
+                        s.available.any { it.item.key == key } || s.upcoming.any { it.item.key == key }
+                    } ?: s.available.firstOrNull()?.item?.key ?: s.upcoming.firstOrNull()?.item?.key
                     LazyColumn(contentPadding = PaddingValues(bottom = 48.dp)) {
                         if (s.available.isNotEmpty()) {
                             item(key = "available_header") {
@@ -126,7 +144,7 @@ fun EpisodeCenterScreen(
                                                     inMyList = viewModel.isInMyList(status.item),
                                                 )
                                             },
-                                            modifier = if (status.item.key == lastCardKey) Modifier.focusRequester(cardRequester) else Modifier,
+                                            modifier = if (status.item.key == activeCardKey) Modifier.focusRequester(cardRequester) else Modifier,
                                         )
                                     }
                                 }
@@ -158,6 +176,8 @@ fun EpisodeCenterScreen(
                                             label = label,
                                             count = 0,
                                             onClick = { onOpenEpisode(status.item, episode) },
+                                            onFocused = { lastCardKey = status.item.key },
+                                            modifier = if (status.item.key == activeCardKey) Modifier.focusRequester(cardRequester) else Modifier,
                                         )
                                     }
                                 }

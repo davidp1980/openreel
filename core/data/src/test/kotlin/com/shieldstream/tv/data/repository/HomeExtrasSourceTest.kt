@@ -5,9 +5,13 @@ import androidx.test.core.app.ApplicationProvider
 import com.shieldstream.tv.data.security.TokenStore
 import com.shieldstream.tv.model.Category
 import com.shieldstream.tv.model.HomeFilter
+import com.shieldstream.tv.model.MediaType
 import com.shieldstream.tv.network.api.TmdbApi
+import com.shieldstream.tv.network.dto.TmdbMovieDetailDto
 import com.shieldstream.tv.network.dto.TmdbMovieDto
 import com.shieldstream.tv.network.dto.TmdbPaginated
+import com.shieldstream.tv.network.dto.TmdbSearchResultDto
+import com.shieldstream.tv.network.dto.TmdbTvDetailDto
 import com.shieldstream.tv.strings.Texts
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -48,5 +52,69 @@ class HomeExtrasSourceTest {
             assertEquals("500", query["vote_count.gte"])
         }
         coVerify(exactly = 0) { tmdb.discoverTvQuery(any(), any()) }
+    }
+
+    @Test
+    fun `movies featured billboard uses movie sources and avoids duplicates from home`() = runTest {
+        val tmdb = mockk<TmdbApi>()
+        val store = mockk<TokenStore> { every { tmdbKey } returns "tmdb-key" }
+        coEvery { tmdb.trendingAll("tmdb-key", 1) } returns TmdbPaginated(
+            results = listOf(
+                TmdbSearchResultDto(
+                    id = 100,
+                    media_type = "movie",
+                    title = "Home Movie",
+                    poster_path = "/p100.jpg",
+                    backdrop_path = "/b100.jpg",
+                    vote_average = 8.2,
+                    vote_count = 1000,
+                ),
+                TmdbSearchResultDto(
+                    id = 200,
+                    media_type = "tv",
+                    name = "Home Show",
+                    poster_path = "/p200.jpg",
+                    backdrop_path = "/b200.jpg",
+                    vote_average = 8.4,
+                    vote_count = 900,
+                ),
+            ),
+        )
+        coEvery { tmdb.trendingAllWeek("tmdb-key", 1) } returns TmdbPaginated()
+        coEvery { tmdb.nowPlayingMovies("tmdb-key", any()) } returns TmdbPaginated(
+            results = listOf(
+                TmdbMovieDto(id = 100, title = "Home Movie", poster_path = "/p100.jpg", backdrop_path = "/b100.jpg"),
+                TmdbMovieDto(id = 101, title = "Cinema Movie", poster_path = "/p101.jpg", backdrop_path = "/b101.jpg", release_date = "2026-11-15"),
+            ),
+        )
+        coEvery { tmdb.trendingMovies("tmdb-key", 1) } returns TmdbPaginated(
+            results = listOf(
+                TmdbMovieDto(id = 102, title = "Trending Movie", poster_path = "/p102.jpg", backdrop_path = "/b102.jpg"),
+            ),
+        )
+        coEvery { tmdb.topRatedMovies("tmdb-key", 1) } returns TmdbPaginated(
+            results = listOf(
+                TmdbMovieDto(id = 103, title = "Acclaimed Movie", poster_path = "/p103.jpg", backdrop_path = "/b103.jpg", vote_average = 8.8, vote_count = 2000),
+            ),
+        )
+        coEvery { tmdb.movieDetails(any(), any(), any(), any()) } answers {
+            val id = firstArg<Int>()
+            TmdbMovieDetailDto(id = id, title = "Movie $id", poster_path = "/p$id.jpg", backdrop_path = "/b$id.jpg")
+        }
+        coEvery { tmdb.tvDetails(any(), any(), any(), any()) } answers {
+            val id = firstArg<Int>()
+            TmdbTvDetailDto(id = id, name = "Show $id", poster_path = "/p$id.jpg", backdrop_path = "/b$id.jpg")
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val source = HomeExtrasSource(tmdb, context, store, mockk<Texts>(relaxed = true))
+
+        val homeFeatured = source.featured(HomeFilter.ALL)
+        val moviesFeatured = source.featured(HomeFilter.MOVIES)
+
+        val homeMovieIds = homeFeatured.filter { it.item.type == MediaType.MOVIE }.map { it.item.id }.toSet()
+        val moviesIds = moviesFeatured.map { it.item.id }.toSet()
+        assertEquals(setOf("100"), homeMovieIds)
+        assertEquals(setOf("101", "102", "103"), moviesIds)
     }
 }

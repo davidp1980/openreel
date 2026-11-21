@@ -47,6 +47,9 @@ sealed interface CalendarFocusResult {
 
     /** Let the key through so the screen is left (Back outside the panel). */
     data object Exit : CalendarFocusResult
+
+    /** Move focus upward out of the calendar into the top navigation bar. */
+    data object ExitTop : CalendarFocusResult
 }
 
 /**
@@ -116,7 +119,8 @@ class CalendarFocusNavigator {
                 move(CalendarFocusTarget.MonthBar(controls[from.control.ordinal + 1]))
             }
             CalendarKey.DOWN -> move(CalendarFocusTarget.Day(layout.selectedDate))
-            CalendarKey.UP, CalendarKey.OK -> CalendarFocusResult.Stay
+            CalendarKey.UP -> CalendarFocusResult.ExitTop
+            CalendarKey.OK -> CalendarFocusResult.Stay
             CalendarKey.BACK -> CalendarFocusResult.Exit
         }
     }
@@ -175,7 +179,7 @@ class CalendarFocusNavigator {
                 else -> {
                     val previous = (from.section - 1 downTo 0).firstOrNull { layout.sections[it].itemCount > 0 }
                     if (previous == null) {
-                        CalendarFocusResult.Stay
+                        CalendarFocusResult.ExitTop
                     } else {
                         val target = layout.sections[previous]
                         val targetRow = (target.itemCount - 1) / target.columns

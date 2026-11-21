@@ -126,35 +126,98 @@ class CatalogRepositoryImpl @Inject constructor(
             .filter { it.items.isNotEmpty() }
     }
 
+    private suspend fun mixRowItems(
+        loadA: suspend () -> List<CatalogItem>,
+        loadB: suspend () -> List<CatalogItem>,
+    ): List<CatalogItem> = coroutineScope {
+        val aDeferred = async { runCatching { loadA() }.getOrDefault(emptyList()) }
+        val bDeferred = async { runCatching { loadB() }.getOrDefault(emptyList()) }
+        val a = aDeferred.await()
+        val b = bDeferred.await()
+        buildList(a.size + b.size) {
+            for (index in 0 until maxOf(a.size, b.size)) {
+                a.getOrNull(index)?.let(::add)
+                b.getOrNull(index)?.let(::add)
+            }
+        }.distinctBy { it.key }
+    }
+
     private fun rowsFor(filter: HomeFilter): List<RowSpec> = when (filter) {
         HomeFilter.ALL -> listOf(
-            RowSpec("top10_movies", texts.get(StringsR.string.data_top_10_movies_week), RowStyle.TOP10) { tmdb.trendingMovies(key).results.map { it.toCatalogItem() } },
-            RowSpec("popular_movies", texts.get(StringsR.string.data_popular_movies)) { tmdb.popularMovies(key).results.map { it.toCatalogItem() } },
-            RowSpec("popular_tv", texts.get(StringsR.string.data_popular_tv_shows)) { tmdb.popularTv(key).results.map { it.toCatalogItem() } },
-            RowSpec("top10_tv", texts.get(StringsR.string.data_top_10_tv_shows_week), RowStyle.TOP10) { tmdb.trendingTv(key).results.map { it.toCatalogItem() } },
-            RowSpec("now_playing", texts.get(StringsR.string.data_now_in_theaters)) { tmdb.nowPlayingMovies(key).results.map { it.toCatalogItem() } },
-            RowSpec("action", texts.get(StringsR.string.data_action)) { tmdb.discoverMovies(key, "28").results.map { it.toCatalogItem() } },
-            RowSpec("scifi", texts.get(StringsR.string.data_sci_fi)) { tmdb.discoverMovies(key, "878").results.map { it.toCatalogItem() } },
-            RowSpec("comedy", texts.get(StringsR.string.data_comedies)) { tmdb.discoverMovies(key, "35").results.map { it.toCatalogItem() } },
-            RowSpec("top_movies", texts.get(StringsR.string.data_acclaimed_movies)) { tmdb.topRatedMovies(key).results.map { it.toCatalogItem() } },
-            RowSpec("top_tv", texts.get(StringsR.string.data_acclaimed_tv_shows)) { tmdb.topRatedTv(key).results.map { it.toCatalogItem() } },
+            RowSpec("trending_today", texts.get(StringsR.string.data_trending_today), RowStyle.TOP10) {
+                tmdb.trendingAll(key).results.mapNotNull { it.toCatalogItemOrNull() }
+            },
+            RowSpec("new_releases", texts.get(StringsR.string.data_new_releases)) {
+                mixRowItems(
+                    { tmdb.nowPlayingMovies(key).results.map { it.toCatalogItem() } },
+                    { tmdb.trendingTv(key).results.map { it.toCatalogItem() } },
+                )
+            },
+            RowSpec("popular_tv", texts.get(StringsR.string.data_popular_tv_shows)) {
+                tmdb.popularTv(key).results.map { it.toCatalogItem() }
+            },
+            RowSpec("popular_movies", texts.get(StringsR.string.data_popular_movies)) {
+                tmdb.popularMovies(key).results.map { it.toCatalogItem() }
+            },
+            RowSpec("edge_of_seat", texts.get(StringsR.string.data_on_the_edge_of_your_seat)) {
+                mixRowItems(
+                    { tmdb.discoverMovies(key, "53").results.map { it.toCatalogItem() } },
+                    { tmdb.discoverTv(key, "9648|80").results.map { it.toCatalogItem() } },
+                )
+            },
+            RowSpec("scifi_fantasy", texts.get(StringsR.string.data_sci_fi_fantasy)) {
+                mixRowItems(
+                    { tmdb.discoverMovies(key, "878").results.map { it.toCatalogItem() } },
+                    { tmdb.discoverTv(key, "10765").results.map { it.toCatalogItem() } },
+                )
+            },
+            RowSpec("action_adventure", texts.get(StringsR.string.data_action_adventure)) {
+                mixRowItems(
+                    { tmdb.discoverMovies(key, "28").results.map { it.toCatalogItem() } },
+                    { tmdb.discoverTv(key, "10759").results.map { it.toCatalogItem() } },
+                )
+            },
+            RowSpec("comedy", texts.get(StringsR.string.data_comedies)) {
+                mixRowItems(
+                    { tmdb.discoverMovies(key, "35").results.map { it.toCatalogItem() } },
+                    { tmdb.discoverTv(key, "35").results.map { it.toCatalogItem() } },
+                )
+            },
+            RowSpec("acclaimed_all", texts.get(StringsR.string.data_critically_acclaimed)) {
+                mixRowItems(
+                    { tmdb.topRatedMovies(key).results.map { it.toCatalogItem() } },
+                    { tmdb.topRatedTv(key).results.map { it.toCatalogItem() } },
+                )
+            },
         )
         HomeFilter.MOVIES -> listOf(
-            RowSpec("m_top10", texts.get(StringsR.string.data_top_10_movies_week), RowStyle.TOP10) { tmdb.trendingMovies(key).results.map { it.toCatalogItem() } },
-            RowSpec("m_popular", texts.get(StringsR.string.data_popular)) { tmdb.popularMovies(key).results.map { it.toCatalogItem() } },
             RowSpec("m_now", texts.get(StringsR.string.data_now_in_theaters)) { tmdb.nowPlayingMovies(key).results.map { it.toCatalogItem() } },
+            RowSpec("m_top10", texts.get(StringsR.string.data_top_10_movies_week), RowStyle.TOP10) { tmdb.trendingMovies(key).results.map { it.toCatalogItem() } },
+            RowSpec("m_popular", texts.get(StringsR.string.data_popular_movies)) { tmdb.popularMovies(key).results.map { it.toCatalogItem() } },
+            RowSpec("m_thriller", texts.get(StringsR.string.category_thrillers)) { tmdb.discoverMovies(key, "53").results.map { it.toCatalogItem() } },
             RowSpec("m_action", texts.get(StringsR.string.data_action)) { tmdb.discoverMovies(key, "28").results.map { it.toCatalogItem() } },
             RowSpec("m_scifi", texts.get(StringsR.string.data_sci_fi)) { tmdb.discoverMovies(key, "878").results.map { it.toCatalogItem() } },
-            RowSpec("m_thriller", "Thriller") { tmdb.discoverMovies(key, "53").results.map { it.toCatalogItem() } },
             RowSpec("m_horror", texts.get(StringsR.string.data_horror)) { tmdb.discoverMovies(key, "27").results.map { it.toCatalogItem() } },
             RowSpec("m_comedy", texts.get(StringsR.string.data_comedies)) { tmdb.discoverMovies(key, "35").results.map { it.toCatalogItem() } },
             RowSpec("m_animation", texts.get(StringsR.string.data_animation)) { tmdb.discoverMovies(key, "16").results.map { it.toCatalogItem() } },
             RowSpec("m_top", texts.get(StringsR.string.data_critically_acclaimed)) { tmdb.topRatedMovies(key).results.map { it.toCatalogItem() } },
+            RowSpec("m_classics", texts.get(StringsR.string.data_classic_movies)) {
+                tmdb.discoverMovieQuery(
+                    key,
+                    mapOf(
+                        "include_adult" to "false",
+                        "sort_by" to "popularity.desc",
+                        "primary_release_date.lte" to "1999-12-31",
+                        "vote_average.gte" to "8.0",
+                        "vote_count.gte" to "500",
+                    ),
+                ).results.map { it.toCatalogItem() }
+            },
         )
         HomeFilter.TV -> listOf(
             RowSpec("t_top10", texts.get(StringsR.string.data_top_10_tv_shows_week), RowStyle.TOP10) { tmdb.trendingTv(key).results.map { it.toCatalogItem() } },
             RowSpec("t_popular", texts.get(StringsR.string.data_popular)) { tmdb.popularTv(key).results.map { it.toCatalogItem() } },
-            RowSpec("t_drama", "Dramas") { tmdb.discoverTv(key, "18").results.map { it.toCatalogItem() } },
+            RowSpec("t_drama", texts.get(StringsR.string.category_dramas)) { tmdb.discoverTv(key, "18").results.map { it.toCatalogItem() } },
             RowSpec("t_crime", texts.get(StringsR.string.data_crime)) { tmdb.discoverTv(key, "80").results.map { it.toCatalogItem() } },
             RowSpec("t_scifi", texts.get(StringsR.string.data_sci_fi_fantasy)) { tmdb.discoverTv(key, "10765").results.map { it.toCatalogItem() } },
             RowSpec("t_action", texts.get(StringsR.string.data_action_adventure)) { tmdb.discoverTv(key, "10759").results.map { it.toCatalogItem() } },

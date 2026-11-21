@@ -40,6 +40,7 @@
     <string name="home_new_episodes">Nuevos episodios</string>
     <string name="home_my_list_f0348a">Mi lista</string>
     <string name="home_recommended_for_you">Recomendado para ti</string>
+    <string name="home_because_you_watched">Porque viste %1$s</string>
     <string name="home_up_next">A continuación</string>
     <string name="home_new_episode">Nuevo episodio</string>
     <string name="home_new_season">Nueva temporada</string>

@@ -82,6 +82,7 @@ fun MainScreen(
     val focusNav: () -> Unit = { runCatching { navRequester.requestFocus() } }
     val isBrowseTab = tab == NavTab.HOME || tab == NavTab.MOVIES || tab == NavTab.TV
     val showTopNav = !isBrowseTab || homeTopNavVisible || navFocused || revealTopNav
+    val focusOrRevealNav: () -> Unit = { if (showTopNav) focusNav() else revealTopNav = true }
     LaunchedEffect(revealTopNav) { if (revealTopNav) navRequester.requestFocusWithRetry() }
 
     val navFocusable = homeInteractive || !isBrowseTab
@@ -92,12 +93,13 @@ fun MainScreen(
     val onSelectTab: (NavTab) -> Unit = { selected ->
         if (selected in tabs && selected != tab) {
             savedTab = selected
-            focusMenuAfterSwitch = selected != NavTab.SEARCH
+            focusMenuAfterSwitch = true
         }
     }
     val newEpisodeCount = (episodeState as? EpisodeCenterUiState.Content)?.newEpisodeCount ?: 0
     val onNavFocusChange: (Boolean) -> Unit = { focused ->
         if (navFocused && !focused) revealTopNav = false
+        if (!focused) focusMenuAfterSwitch = false
         navFocused = focused
     }
 
@@ -117,7 +119,7 @@ fun MainScreen(
                     Modifier
                         .fillMaxSize()
                         .padding(top = if (isBrowseTab) 0.dp else TopNavHeight)
-                        .onBackKey(enabled = true) { if (showTopNav) focusNav() else revealTopNav = true }
+                        .onBackKey(enabled = true) { focusOrRevealNav() }
                         .focusRequester(contentRequester)
                         .focusGroup(),
                 ) {
@@ -137,6 +139,7 @@ fun MainScreen(
                                 preferNavFocus = navFocused || focusMenuAfterSwitch,
                                 onNavFocusConsumed = { focusMenuAfterSwitch = false },
                                 onTopNavVisibleChange = { homeTopNavVisible = it },
+                                onBackToNav = focusOrRevealNav,
                             )
                         }
                     } else {
@@ -145,9 +148,17 @@ fun MainScreen(
                                 onOpenEpisode = { onOpenNewEpisode(it.show, it.episode) },
                                 onOpenRelease = { onOpenItem(it.item) },
                                 preferNavFocus = navFocused || focusMenuAfterSwitch,
+                                onExitTop = focusNav,
                             )
-                            NavTab.SEARCH -> SearchScreen(onItemClick = onOpenItem)
-                            NavTab.EPISODES -> EpisodeCenterScreen(onOpenEpisode = onOpenNewEpisode, viewModel = episodeCenter)
+                            NavTab.SEARCH -> SearchScreen(
+                                onItemClick = onOpenItem,
+                                preferNavFocus = navFocused || focusMenuAfterSwitch,
+                            )
+                            NavTab.EPISODES -> EpisodeCenterScreen(
+                                onOpenEpisode = onOpenNewEpisode,
+                                preferNavFocus = navFocused || focusMenuAfterSwitch,
+                                viewModel = episodeCenter,
+                            )
                             NavTab.LIVE -> LiveTvScreen(
                                 onPlayLive = onPlayLive,
                                 consumeLastLiveChannelKey = consumeLastLiveChannelKey,

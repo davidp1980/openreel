@@ -4,6 +4,7 @@ import com.shieldstream.tv.ui.theme.AppShapes
 import com.shieldstream.tv.strings.R as StringsR
 import com.shieldstream.tv.strings.localizedStringResource
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +31,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -53,6 +55,7 @@ fun MyListScreen(
     viewModel: MyListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val firstChipRequester = remember { FocusRequester() }
     val cardRequester = remember { FocusRequester() }
     var lastCardKey by rememberSaveable { mutableStateOf<String?>(null) }
     var cardToRestore by remember { mutableStateOf<String?>(null) }
@@ -78,7 +81,17 @@ fun MyListScreen(
         cardToRestore = null
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .focusProperties {
+                onEnter = {
+                    val focusedCard = lastCardKey != null && runCatching { cardRequester.requestFocus() }.getOrDefault(false)
+                    if (!focusedCard) runCatching { firstChipRequester.requestFocus() }
+                }
+            }
+            .focusGroup(),
+    ) {
         Column(Modifier.fillMaxSize().padding(start = 48.dp, end = 36.dp, top = 24.dp)) {
         val currentSort = when (val s = state) {
             is MyListUiState.Content -> s.sort
@@ -106,8 +119,13 @@ fun MyListScreen(
                 MyListFilter.ALL to localizedStringResource(StringsR.string.home_all),
                 MyListFilter.TV to localizedStringResource(StringsR.string.home_tv_shows),
                 MyListFilter.MOVIES to localizedStringResource(StringsR.string.home_movies),
-            ).forEach { (f, label) ->
-                FilterChip(label = label, selected = f == current, onClick = { viewModel.setFilter(f) })
+            ).forEachIndexed { index, (f, label) ->
+                FilterChip(
+                    label = label,
+                    selected = f == current,
+                    onClick = { viewModel.setFilter(f) },
+                    modifier = if (index == 0) Modifier.focusRequester(firstChipRequester) else Modifier,
+                )
                 Spacer(Modifier.width(8.dp))
             }
             Spacer(Modifier.weight(1f))
@@ -208,10 +226,15 @@ internal fun MyListActions(
 )
 
 @Composable
-private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun FilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        Modifier
+        modifier
             .background(
                 when {
                     focused -> Color.White

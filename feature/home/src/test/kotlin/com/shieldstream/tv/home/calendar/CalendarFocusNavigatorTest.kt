@@ -40,7 +40,7 @@ class CalendarFocusNavigatorTest {
     fun `month bar and chips move in order`() {
         assertEquals(to(MonthBar(MonthControl.NEXT)), move(MonthBar(MonthControl.PREVIOUS), CalendarKey.RIGHT))
         assertEquals(CalendarFocusResult.Stay, move(MonthBar(MonthControl.PREVIOUS), CalendarKey.LEFT))
-        assertEquals(CalendarFocusResult.Stay, move(MonthBar(MonthControl.NEXT), CalendarKey.UP))
+        assertEquals(CalendarFocusResult.ExitTop, move(MonthBar(MonthControl.NEXT), CalendarKey.UP))
         assertEquals(to(Chip(0)), move(Chip(1), CalendarKey.LEFT))
         assertEquals(CalendarFocusResult.Stay, move(Chip(0), CalendarKey.LEFT))
         assertEquals(to(Chip(3)), move(Chip(2), CalendarKey.RIGHT))
@@ -161,10 +161,10 @@ class CalendarFocusNavigatorTest {
     }
 
     @Test
-    fun `the first poster row has nothing above it`() {
-        assertEquals(CalendarFocusResult.Stay, move(Poster(0, 3), CalendarKey.UP))
+    fun `the first poster row exits upward to the top navigation bar`() {
+        assertEquals(CalendarFocusResult.ExitTop, move(Poster(0, 3), CalendarKey.UP))
         val onlyReleases = layout(sections = listOf(PanelSectionLayout(0, 4), PanelSectionLayout(2, 4)))
-        assertEquals(CalendarFocusResult.Stay, move(Poster(1, 0), CalendarKey.UP, onlyReleases))
+        assertEquals(CalendarFocusResult.ExitTop, move(Poster(1, 0), CalendarKey.UP, onlyReleases))
     }
 
     @Test

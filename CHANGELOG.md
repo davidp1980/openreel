@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.46] - 2026-11-21
+
+### Changed
+
+- **Consistent D-pad focus and entry across all sections:** added deterministic `onEnter` focus targets in `HomeScreen` (`ROWS` restores the active card), `LiveTvScreen`, `MyListScreen`, `EpisodeCenterScreen`, `CalendarScreen`, and `SearchScreen` so pressing Down/OK from `TopNavBar` never drops focus onto secondary corner controls; `TopNavBar` now switches to Search on focus while keeping focus on the bar until confirmed; `Up` from `CalendarScreen`'s month bar or top poster row exits cleanly to `TopNavBar` (`CalendarFocusResult.ExitTop`), and `Back` from `HomeScreen` rows returns to the top and focuses `TopNavBar`.
+- **Differentiated Home vs. Movies billboards and catalog rows:** split `HomeExtrasSource` featured curation so `HomeFilter.MOVIES` draws from theater/movie endpoints (`nowPlayingMovies`, `trendingMovies`, `topRatedMovies`) and excludes titles already featured on `HomeFilter.ALL`; reshaped `HomeFilter.ALL` rows into cross-media discovery (*Trending today* Top 10, *New releases*, mixed genre rows) while keeping `HomeFilter.MOVIES` focused on cinema (*Now in theaters*, *Top 10 movies this week*, *Classic movies*, and film genres).
+
+### Added
+
+- **Contextual "Because you watched …" rows:** added non-blocking `because_watched_*` recommendation rows in `HomeViewModel` powered by `catalogRepository.getRecommendations` from recent watch history and My List seeds, filtering out already-watched titles.
+
 ## [1.0.45] - 2026-11-21
 
 ### Changed

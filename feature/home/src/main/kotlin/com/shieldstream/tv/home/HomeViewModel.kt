@@ -87,6 +87,12 @@ private data class RecommendationResult(
     val rows: List<CatalogRow>,
 )
 
+private data class BecauseYouWatchedQuery(
+    val seeds: List<Pair<MediaType, String>>,
+    val watchedKeys: Set<String>,
+    val maxItems: Int,
+)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
@@ -122,8 +128,10 @@ class HomeViewModel @Inject constructor(
 
     private val recommendationRows = MutableStateFlow<List<CatalogRow>>(emptyList())
 
-    private val trailingRows = combine(myListRows, recommendationRows) { listRow, recommendationRow ->
-        listRow?.plus(recommendationRow)
+    private val becauseYouWatchedRows = MutableStateFlow<List<CatalogRow>>(emptyList())
+
+    private val trailingRows = combine(myListRows, recommendationRows, becauseYouWatchedRows) { listRow, recommendationRow, becauseRow ->
+        listRow?.let { it + recommendationRow + becauseRow }
     }
 
     val uiState: StateFlow<HomeUiState> = combine(
@@ -271,6 +279,15 @@ class HomeViewModel @Inject constructor(
                         Log.d(TAG, "Ignoring stale recommendations for ${query.filter}")
                     }
                 }
+        }
+        viewModelScope.launch {
+            combine(homeRowQuery, watchProgress.progress, myList.entries) { rowQuery, progress, listEntries ->
+                buildBecauseYouWatchedQuery(rowQuery, progress, listEntries)
+            }
+                .distinctUntilChanged()
+                .onEach { becauseYouWatchedRows.value = emptyList() }
+                .mapLatest { query -> buildBecauseYouWatchedRows(query) }
+                .collect { becauseYouWatchedRows.value = it }
         }
     }
 
@@ -459,6 +476,65 @@ class HomeViewModel @Inject constructor(
         )
     }
 
+    private fun buildBecauseYouWatchedQuery(
+        rowQuery: HomeRowQuery,
+        progress: Map<String, com.shieldstream.tv.model.WatchProgress>,
+        myListEntries: List<com.shieldstream.tv.domain.MyListEntry>,
+    ): BecauseYouWatchedQuery {
+        fun matchesFilter(type: MediaType): Boolean = when (rowQuery.filter) {
+            HomeFilter.ALL -> true
+            HomeFilter.MOVIES -> type == MediaType.MOVIE
+            HomeFilter.TV -> type == MediaType.TV
+        }
+        val progressEntries = progress.entries
+            .mapNotNull { (key, value) ->
+                if (!value.isWatched && !value.isResumable) return@mapNotNull null
+                val parts = key.split(':')
+                val pair = when {
+                    parts.size == 2 && parts[0] == "movie" && parts[1].isNotBlank() -> MediaType.MOVIE to parts[1]
+                    parts.size == 4 && parts[0] == "tv" && parts[1].isNotBlank() -> MediaType.TV to parts[1]
+                    else -> null
+                } ?: return@mapNotNull null
+                Triple(pair, value.updatedAt, value.isWatched)
+            }
+            .sortedByDescending { it.second }
+        val watchedKeys = progressEntries
+            .filter { it.third }
+            .mapTo(HashSet()) { "${it.first.first.name}_${it.first.second}" }
+        val candidatePairs = (progressEntries.map { it.first } + myListEntries.map { it.type to it.id })
+            .filter { matchesFilter(it.first) }
+            .distinct()
+        val limit = if (rowQuery.filter == HomeFilter.ALL) 2 else 1
+        val seeds = if (rowQuery.filter == HomeFilter.ALL && candidatePairs.size > 1) {
+            val firstMovie = candidatePairs.firstOrNull { it.first == MediaType.MOVIE }
+            val firstTv = candidatePairs.firstOrNull { it.first == MediaType.TV }
+            (listOfNotNull(firstMovie, firstTv) + candidatePairs).distinct().take(limit)
+        } else {
+            candidatePairs.take(limit)
+        }
+        return BecauseYouWatchedQuery(seeds = seeds, watchedKeys = watchedKeys, maxItems = rowQuery.maxItems)
+    }
+
+    private suspend fun buildBecauseYouWatchedRows(query: BecauseYouWatchedQuery): List<CatalogRow> {
+        if (query.seeds.isEmpty()) return emptyList()
+        return query.seeds.mapConcurrent(concurrency = 2) { (type, id) ->
+            withTimeoutOrNull(5_000) {
+                runCatching {
+                    val seedItem = catalogRepository.getItem(type, id) ?: return@runCatching null
+                    val recs = catalogRepository.getRecommendations(seedItem)
+                        .filter { it.key !in query.watchedKeys && it.key != seedItem.key && it.posterUrl != null }
+                        .take(query.maxItems)
+                    if (recs.isEmpty()) return@runCatching null
+                    CatalogRow(
+                        id = "${BECAUSE_WATCHED_ROW_PREFIX}${seedItem.key}",
+                        title = texts.get(StringsR.string.home_because_you_watched, seedItem.title),
+                        items = recs,
+                    )
+                }.getOrNull()
+            }
+        }.filterNotNull()
+    }
+
     private suspend fun recommendationEntries(query: RecommendationQuery): List<Pair<MediaType, String>> = coroutineScope {
         suspend fun load(type: MediaType): List<String> {
             val result = withTimeoutOrNull(5_000) {
@@ -527,6 +603,7 @@ class HomeViewModel @Inject constructor(
         const val MY_LIST_ROW_ID = "my_list"
         const val MY_LIST_ROW_FIRST_BATCH = 12
         const val RECOMMENDATIONS_ROW_ID = "recommended_for_you"
+        const val BECAUSE_WATCHED_ROW_PREFIX = "because_watched_"
     }
 
     fun cancelBackgroundPrefetch() {

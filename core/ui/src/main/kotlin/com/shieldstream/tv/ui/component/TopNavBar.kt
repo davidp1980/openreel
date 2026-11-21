@@ -171,7 +171,11 @@ fun TopNavBar(
                     contentDescription = localizedStringResource(StringsR.string.common_search),
                     selected = selected == NavTab.SEARCH,
                     solidBackground = solidBackground,
-                    onClick = { onSelect(NavTab.SEARCH) },
+                    onClick = {
+                        onSelect(NavTab.SEARCH)
+                        runCatching { contentRequester.requestFocus() }
+                    },
+                    onFocused = { onSelect(NavTab.SEARCH) },
                     contentRequester = contentRequester,
                     focusable = focusable,
                     modifier = if (selected == NavTab.SEARCH) Modifier.focusRequester(selectedRequester) else Modifier,
@@ -311,6 +315,7 @@ private fun TopNavIconButton(
     contentRequester: FocusRequester,
     focusable: Boolean,
     modifier: Modifier = Modifier,
+    onFocused: () -> Unit = {},
 ) {
     var focused by remember { mutableStateOf(false) }
     val background = when {
@@ -333,7 +338,10 @@ private fun TopNavIconButton(
                 canFocus = focusable
                 down = contentRequester
             }
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
+            }
             .tvClickable(onClick = onClick),
     ) {
         Icon(

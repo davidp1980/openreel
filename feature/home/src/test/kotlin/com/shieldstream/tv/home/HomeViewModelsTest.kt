@@ -754,6 +754,43 @@ class HomeViewModelsTest {
         coVerify(exactly = 0) { catalog.getHome(HomeFilter.MOVIES) }
     }
 
+    @Test
+    fun `because you watched rows mix movie and show seeds on Home and filter out watched items`() = runTest {
+        val watchedMovie = item("10", MediaType.MOVIE, "Inception")
+        val watchedShow = item("20", MediaType.TV, "Severance")
+        val recMovie = item("11", MediaType.MOVIE, "Tenet")
+        val recShow = item("21", MediaType.TV, "Silo")
+        val catalog = catalog(item("base", MediaType.MOVIE, "Base"), watchedMovie, watchedShow, recMovie, recShow)
+        coEvery { catalog.getRecommendations(watchedMovie) } returns listOf(watchedMovie, recMovie)
+        coEvery { catalog.getRecommendations(watchedShow) } returns listOf(recShow)
+        val progress = mapOf(
+            WatchProgress.movieKey("10") to watched(200),
+            WatchProgress.episodeKey("20", 1, 1) to watched(100),
+        )
+        val viewModel = homeViewModel(
+            catalog = catalog,
+            trakt = mockk(relaxed = true),
+            active = profileFlow(traktUser = null),
+            progress = progress,
+        )
+
+        viewModel.load(HomeFilter.ALL)
+        advanceUntilIdle()
+
+        val allIds = viewModel.rowIds()
+        assertEquals(
+            listOf("because_watched_MOVIE_10", "because_watched_TV_20", "base"),
+            allIds,
+        )
+        val movieRow = (viewModel.uiState.value as HomeUiState.Content).rows.first { it.id == "because_watched_MOVIE_10" }
+        assertEquals(listOf("11"), movieRow.items.map { it.id })
+
+        viewModel.load(HomeFilter.MOVIES)
+        advanceUntilIdle()
+
+        assertEquals(listOf("because_watched_MOVIE_10", "base"), viewModel.rowIds())
+    }
+
     private fun MyListViewModel.content() = uiState.value as MyListUiState.Content
 
     private fun HomeViewModel.rowIds() = (uiState.value as HomeUiState.Content).rows.map { it.id }

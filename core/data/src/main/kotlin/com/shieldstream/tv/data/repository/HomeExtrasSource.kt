@@ -46,8 +46,8 @@ class HomeExtrasSource @Inject constructor(
 
     suspend fun featured(filter: HomeFilter): List<FeaturedItem> {
         val week = weekKey()
-        val prefKey = "week_${filter.name}"
-        val picks = readPicks(prefs.getString(prefKey, null), week) ?: choosePicks(filter).also { picks ->
+        val prefKey = "v2_week_${filter.name}"
+        val picks = readPicks(prefs.getString(prefKey, null), week) ?: choosePicks(filter, week).also { picks ->
             if (picks.isNotEmpty()) prefs.edit().putString(prefKey, writePicks(week, picks)).apply()
         }
         return coroutineScope {
@@ -102,19 +102,25 @@ class HomeExtrasSource @Inject constructor(
         picks.map { pick -> async { runCatching { loadFeatured(pick) }.getOrNull() } }.awaitAll().filterNotNull()
     }
 
-    private suspend fun choosePicks(filter: HomeFilter): List<Pick> {
-        val trending = (tmdb.trendingAllWeek(key, 1).results + runCatching { tmdb.trendingAllWeek(key, 2).results }.getOrDefault(emptyList()))
+    private fun allWeekPickKeys(week: String): Set<String> =
+        readPicks(prefs.getString("v2_week_${HomeFilter.ALL.name}", null), week)
+            .orEmpty()
+            .mapTo(HashSet()) { "${it.type.name}:${it.id}" }
+
+    private suspend fun choosePicks(filter: HomeFilter, week: String): List<Pick> = when (filter) {
+        HomeFilter.ALL -> chooseAllPicks()
+        HomeFilter.MOVIES -> chooseMoviePicks(excludedKeys = allWeekPickKeys(week))
+        HomeFilter.TV -> chooseTvPicks(excludedKeys = allWeekPickKeys(week))
+    }
+
+    private suspend fun chooseAllPicks(): List<Pick> = coroutineScope {
+        val dailyDeferred = async { runCatching { tmdb.trendingAll(key, 1).results }.getOrDefault(emptyList()) }
+        val weeklyDeferred = async { runCatching { tmdb.trendingAllWeek(key, 1).results }.getOrDefault(emptyList()) }
+        val trending = (dailyDeferred.await() + weeklyDeferred.await())
             .filter { it.media_type == "movie" || it.media_type == "tv" }
             .filter { it.backdrop_path != null && it.poster_path != null }
-            .filter {
-                when (filter) {
-                    HomeFilter.ALL -> true
-                    HomeFilter.MOVIES -> it.media_type == "movie"
-                    HomeFilter.TV -> it.media_type == "tv"
-                }
-            }
             .distinctBy { it.media_type + it.id }
-        if (trending.isEmpty()) return emptyList()
+        if (trending.isEmpty()) return@coroutineScope emptyList()
 
         val today = isoDate(Date())
         val recentLimit = isoDate(Date(System.currentTimeMillis() - 60L * 24 * 3600 * 1000))
@@ -130,18 +136,76 @@ class HomeExtrasSource @Inject constructor(
 
         add(unused { dateOf(it) in recentLimit..today }, FeaturedBadge.NEW)
         add(unused { true }, FeaturedBadge.POPULAR)
-        when (filter) {
-            HomeFilter.ALL -> {
-                add(unused { it.media_type == "tv" }, FeaturedBadge.SERIES_NOW)
-                add(unused { it.media_type == "movie" }, FeaturedBadge.MOVIE_NOW)
-            }
-            else -> add(unused { true }, FeaturedBadge.RISING)
+        add(unused { it.media_type == "tv" }, FeaturedBadge.SERIES_NOW)
+        add(unused { it.media_type == "movie" }, FeaturedBadge.MOVIE_NOW)
+        val tvCount = picks.count { it.type == MediaType.TV }
+        val movieCount = picks.count { it.type == MediaType.MOVIE }
+        val preferredType = if (tvCount < movieCount) "tv" else "movie"
+        val acclaimed = trending
+            .filter { it.media_type + it.id !in used && it.vote_count >= 300 && it.media_type == preferredType }
+            .maxByOrNull { it.vote_average }
+            ?: trending.filter { it.media_type + it.id !in used && it.vote_count >= 300 }.maxByOrNull { it.vote_average }
+        add(acclaimed, FeaturedBadge.ACCLAIMED)
+        picks.take(5)
+    }
+
+    private suspend fun chooseMoviePicks(excludedKeys: Set<String>): List<Pick> = coroutineScope {
+        val nowPlayingDeferred = async { runCatching { tmdb.nowPlayingMovies(key).results }.getOrDefault(emptyList()) }
+        val trendingDeferred = async { runCatching { tmdb.trendingMovies(key, 1).results }.getOrDefault(emptyList()) }
+        val topRatedDeferred = async { runCatching { tmdb.topRatedMovies(key, 1).results }.getOrDefault(emptyList()) }
+        val nowPlaying = nowPlayingDeferred.await().filter { it.backdrop_path != null && it.poster_path != null }
+        val trending = trendingDeferred.await().filter { it.backdrop_path != null && it.poster_path != null }
+        val topRated = topRatedDeferred.await().filter { it.backdrop_path != null && it.poster_path != null }
+
+        val today = isoDate(Date())
+        val recentLimit = isoDate(Date(System.currentTimeMillis() - 60L * 24 * 3600 * 1000))
+        val used = HashSet<Int>()
+        val picks = ArrayList<Pick>()
+        fun pick(candidates: List<com.shieldstream.tv.network.dto.TmdbMovieDto>, badge: FeaturedBadge, predicate: (com.shieldstream.tv.network.dto.TmdbMovieDto) -> Boolean = { true }) {
+            val chosen = candidates.firstOrNull { it.id !in used && "MOVIE:${it.id}" !in excludedKeys && predicate(it) }
+                ?: candidates.firstOrNull { it.id !in used && predicate(it) }
+                ?: return
+            used.add(chosen.id)
+            picks += Pick(MediaType.MOVIE, chosen.id, badge)
         }
-        add(
-            trending.filter { it.media_type + it.id !in used && it.vote_count >= 300 }.maxByOrNull { it.vote_average },
-            FeaturedBadge.ACCLAIMED,
-        )
-        return picks.take(5)
+
+        pick(nowPlaying, FeaturedBadge.NEW) { (it.release_date.orEmpty()) in recentLimit..today }
+        if (picks.isEmpty()) pick(nowPlaying, FeaturedBadge.NEW)
+        pick(trending, FeaturedBadge.MOVIE_NOW)
+        pick(nowPlaying + trending, FeaturedBadge.POPULAR)
+        pick(trending, FeaturedBadge.RISING)
+        pick(topRated.sortedByDescending { it.vote_average }, FeaturedBadge.ACCLAIMED) { it.vote_count >= 500 }
+        if (picks.size < 5) pick(topRated, FeaturedBadge.ACCLAIMED)
+        picks.take(5)
+    }
+
+    private suspend fun chooseTvPicks(excludedKeys: Set<String>): List<Pick> = coroutineScope {
+        val trendingDeferred = async { runCatching { tmdb.trendingTv(key, 1).results }.getOrDefault(emptyList()) }
+        val popularDeferred = async { runCatching { tmdb.popularTv(key, 1).results }.getOrDefault(emptyList()) }
+        val topRatedDeferred = async { runCatching { tmdb.topRatedTv(key, 1).results }.getOrDefault(emptyList()) }
+        val trending = trendingDeferred.await().filter { it.backdrop_path != null && it.poster_path != null }
+        val popular = popularDeferred.await().filter { it.backdrop_path != null && it.poster_path != null }
+        val topRated = topRatedDeferred.await().filter { it.backdrop_path != null && it.poster_path != null }
+
+        val today = isoDate(Date())
+        val recentLimit = isoDate(Date(System.currentTimeMillis() - 60L * 24 * 3600 * 1000))
+        val used = HashSet<Int>()
+        val picks = ArrayList<Pick>()
+        fun pick(candidates: List<com.shieldstream.tv.network.dto.TmdbTvDto>, badge: FeaturedBadge, predicate: (com.shieldstream.tv.network.dto.TmdbTvDto) -> Boolean = { true }) {
+            val chosen = candidates.firstOrNull { it.id !in used && "TV:${it.id}" !in excludedKeys && predicate(it) }
+                ?: candidates.firstOrNull { it.id !in used && predicate(it) }
+                ?: return
+            used.add(chosen.id)
+            picks += Pick(MediaType.TV, chosen.id, badge)
+        }
+
+        pick(trending + popular, FeaturedBadge.NEW) { (it.first_air_date.orEmpty()) in recentLimit..today }
+        pick(trending, FeaturedBadge.SERIES_NOW)
+        pick(popular, FeaturedBadge.POPULAR)
+        pick(trending, FeaturedBadge.RISING)
+        pick(topRated.sortedByDescending { it.vote_average }, FeaturedBadge.ACCLAIMED) { it.vote_count >= 150 }
+        if (picks.size < 5) pick(topRated, FeaturedBadge.ACCLAIMED)
+        picks.take(5)
     }
 
     private suspend fun loadFeatured(pick: Pick): FeaturedItem? {

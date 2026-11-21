@@ -151,6 +151,7 @@ fun HomeScreen(
     preferNavFocus: Boolean,
     onNavFocusConsumed: () -> Unit,
     onTopNavVisibleChange: (Boolean) -> Unit = {},
+    onBackToNav: () -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(key = "home_${filter.name}"),
 ) {
     LaunchedEffect(filter) { viewModel.load(filter) }
@@ -211,6 +212,7 @@ fun HomeScreen(
                 preferNavFocus = preferNavFocus,
                 onNavFocusConsumed = onNavFocusConsumed,
                 onTopNavVisibleChange = onTopNavVisibleChange,
+                onBackToNav = onBackToNav,
             )
         }
     }
@@ -309,6 +311,7 @@ private fun HomeContent(
     preferNavFocus: Boolean,
     onNavFocusConsumed: () -> Unit,
     onTopNavVisibleChange: (Boolean) -> Unit,
+    onBackToNav: () -> Unit,
 ) {
     CatalogFeed(
         rows = rows,
@@ -328,6 +331,7 @@ private fun HomeContent(
         onTopNavVisibleChange = onTopNavVisibleChange,
         onExitTop = null,
         onBack = null,
+        onBackToNav = onBackToNav,
         header = null,
     )
 }
@@ -365,6 +369,7 @@ internal fun RowsBrowser(
         onTopNavVisibleChange = {},
         onExitTop = onExitTop,
         onBack = onBack,
+        onBackToNav = null,
         header = header,
     )
 }
@@ -389,6 +394,7 @@ private fun CatalogFeed(
     onTopNavVisibleChange: (Boolean) -> Unit,
     onExitTop: (() -> Unit)?,
     onBack: (() -> Unit)?,
+    onBackToNav: (() -> Unit)?,
     header: String?,
 ) {
     val hasBillboard = featured.isNotEmpty()
@@ -515,6 +521,16 @@ private fun CatalogFeed(
             }
         }
 
+        fun exitRowsToTopNav() {
+            transitionJob?.cancel()
+            val topZone = initialHomeZone(hasFeatured = hasBillboard)
+            focusZoneHolder.zone = topZone
+            activeZone = topZone
+            parkingFocus = false
+            scrollScope.launch { listState.scrollToItem(0, 0) }
+            onBackToNav?.invoke()
+        }
+
         LaunchedEffect(Unit) {
             withFrameNanos { }
             when {
@@ -553,14 +569,18 @@ private fun CatalogFeed(
                         if (continueMenu == null && myListMenu == null && upNextMenu == null) {
                             when (activeZone) {
                                 HomeFocusZone.HERO -> if (featured.isNotEmpty()) runCatching { heroRequester.requestFocus() }
-                                HomeFocusZone.ROWS -> Unit
+                                HomeFocusZone.ROWS -> if (rows.isNotEmpty()) runCatching { restoreRequester.requestFocus() }
                             }
                         }
                     }
                 }
                 .focusGroup()
                 .then(
-                    if (onBack != null) Modifier.onBackKey(enabled = true) { onBack() } else Modifier,
+                    when {
+                        onBack != null -> Modifier.onBackKey(enabled = true) { onBack() }
+                        onBackToNav != null && activeZone == HomeFocusZone.ROWS -> Modifier.onBackKey(enabled = true) { exitRowsToTopNav() }
+                        else -> Modifier
+                    },
                 )
                 .onPreviewKeyEvent { e ->
                     val vertical = e.key == Key.DirectionDown || e.key == Key.DirectionUp
@@ -689,6 +709,14 @@ private fun CatalogFeed(
                                     rowIndex == 0 && hasBillboard -> Modifier.onPreviewKeyEvent { event ->
                                         if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
                                             navigateToBillboard()
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    rowIndex == 0 && onBackToNav != null -> Modifier.onPreviewKeyEvent { event ->
+                                        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
+                                            onBackToNav()
                                             true
                                         } else {
                                             false

@@ -73,6 +73,7 @@ fun CalendarScreen(
     onOpenEpisode: (CalendarEpisode) -> Unit = {},
     onOpenRelease: (CalendarRelease) -> Unit = {},
     preferNavFocus: Boolean = false,
+    onExitTop: () -> Unit = {},
     viewModel: CalendarViewModel = hiltViewModel(),
 ) {
     // The root reads only the month and today, so moving between days of a month does not
@@ -191,6 +192,10 @@ fun CalendarScreen(
                 }
                 CalendarFocusResult.Stay -> true
                 CalendarFocusResult.Exit -> false
+                CalendarFocusResult.ExitTop -> {
+                    onExitTop()
+                    true
+                }
             }
         }
     }
@@ -222,10 +227,16 @@ fun CalendarScreen(
             .background(CalendarColors.Canvas)
             .onPreviewKeyEvent { event -> handleKey(event, focus, navigate) }
             .focusProperties {
-                // Entering from the navigation rail lands on the selected day.
+                // Entering from the top navigation bar lands on the remembered poster or the selected day.
                 onEnter = {
-                    val index = grid.indexOf(selectedDate())
-                    if (index >= 0) focus.days[index].requestFocus()
+                    val poster = viewModel.lastFocus as? CalendarFocusTarget.Poster
+                    val clamped = poster?.let { focus.navigator.clamp(it, layout()) }
+                    if (clamped is CalendarFocusTarget.Poster) {
+                        focusTarget(clamped)
+                    } else {
+                        val index = grid.indexOf(selectedDate())
+                        if (index >= 0) focus.days[index].requestFocus()
+                    }
                 }
             }
             .focusGroup()

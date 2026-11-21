@@ -2,6 +2,7 @@ package com.shieldstream.tv.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -98,6 +100,8 @@ fun LiveTvScreen(
     val m3uEditor by viewModel.m3uEditor.collectAsStateWithLifecycle()
     val customM3uUrl by viewModel.customM3uUrl.collectAsStateWithLifecycle()
     val cardRequester = remember { FocusRequester() }
+    val firstFilterRequester = remember { FocusRequester() }
+    val refreshRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     var lastCardKey by rememberSaveable { mutableStateOf<String?>(null) }
@@ -161,7 +165,18 @@ fun LiveTvScreen(
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .focusProperties {
+                onEnter = {
+                    val entered = runCatching { cardRequester.requestFocus() }.getOrDefault(false) ||
+                        runCatching { firstFilterRequester.requestFocus() }.getOrDefault(false)
+                    if (!entered) runCatching { refreshRequester.requestFocus() }
+                }
+            }
+            .focusGroup(),
+    ) {
         Column(Modifier.fillMaxSize().padding(start = 48.dp, end = 36.dp, top = 24.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -187,6 +202,7 @@ fun LiveTvScreen(
                 TvButton(
                     text = localizedStringResource(StringsR.string.live_tv_refresh),
                     onClick = viewModel::refresh,
+                    modifier = Modifier.focusRequester(refreshRequester),
                 )
             }
             Spacer(Modifier.height(16.dp))
@@ -227,6 +243,9 @@ fun LiveTvScreen(
                                 current.sections.filter { it.id == activeSectionId }
                             }
                         }
+                        val activeCardKey = lastCardKey?.takeIf { key ->
+                            visibleSections.any { section -> section.channels.any { it.key == key } }
+                        } ?: visibleSections.firstOrNull()?.channels?.firstOrNull()?.key
                         if (current.sections.size > 1) {
                             val defaultSectionTitle = localizedStringResource(StringsR.string.live_tv_section_now)
                             LazyRow(
@@ -241,6 +260,7 @@ fun LiveTvScreen(
                                             selectedSectionId = null
                                             coroutineScope.launch { listState.scrollToItem(0) }
                                         },
+                                        modifier = Modifier.focusRequester(firstFilterRequester),
                                     )
                                 }
                                 items(current.sections, key = { "filter_${it.id}" }) { section ->
@@ -312,7 +332,7 @@ fun LiveTvScreen(
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .then(
-                                                        if (channel.key == lastCardKey) {
+                                                        if (channel.key == activeCardKey) {
                                                             Modifier.focusRequester(cardRequester)
                                                         } else {
                                                             Modifier
@@ -505,10 +525,11 @@ private fun LiveSectionChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .background(
                 when {
                     focused -> Color.White
