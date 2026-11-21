@@ -1,17 +1,16 @@
 package com.shieldstream.tv.data.update
 
-import com.shieldstream.tv.strings.R as StringsR
-import com.shieldstream.tv.strings.Texts
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageInstaller
 import android.os.Build
 import android.util.Log
+import androidx.core.content.FileProvider
 import com.shieldstream.tv.domain.AppUpdate
 import com.shieldstream.tv.domain.AppVersion
 import com.shieldstream.tv.domain.UpdateRepository
 import com.shieldstream.tv.domain.UpdateState
+import com.shieldstream.tv.strings.R as StringsR
+import com.shieldstream.tv.strings.Texts
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,15 +28,10 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
-import java.util.zip.CRC32
-import java.util.zip.ZipEntry
-import java.util.zip.ZipFile
-import java.util.zip.ZipOutputStream
 
 @Singleton
 class UpdateRepositoryImpl @Inject constructor(
@@ -60,23 +54,8 @@ class UpdateRepositoryImpl @Inject constructor(
 
     private var job: Job? = null
 
-    @Volatile private var lastApk: File? = null
-    @Volatile private var lastWithDm = false
-
     init {
-        UpdateInstallReceiver.onFailure = { status, message ->
-            val update = (_state.value as? UpdateState.Installing)?.update
-            val apk = lastApk
-            if (lastWithDm && status != PackageInstaller.STATUS_FAILURE_ABORTED && apk != null && apk.exists()) {
-                Log.w(TAG, "Instalación con perfil fallida ($status): se reintenta sin él")
-                scope.launch {
-                    runCatching { install(apk, withProfile = false) }
-                        .onFailure { _state.value = UpdateState.Failed(message, update) }
-                }
-            } else {
-                _state.value = UpdateState.Failed(message, update)
-            }
-        }
+        scope.launch { cleanInstalledApks() }
     }
 
     override fun check(manual: Boolean) {
@@ -89,11 +68,12 @@ class UpdateRepositoryImpl @Inject constructor(
             runCatching { fetchLatest() }
                 .onSuccess { latest ->
                     prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
-                    _state.value = if (latest != null && isNewer(latest.version, version.name)) {
+                    if (latest != null && isNewer(latest.version, version.name)) {
                         if (manual) _promptDismissed.value = false
-                        UpdateState.Available(version.name, latest)
+                        _state.value = UpdateState.Available(version.name, latest)
                     } else {
-                        UpdateState.UpToDate(version.name)
+                        cleanInstalledApks()
+                        _state.value = UpdateState.UpToDate(version.name)
                     }
                 }
                 .onFailure {
@@ -108,10 +88,12 @@ class UpdateRepositoryImpl @Inject constructor(
     }
 
     override fun downloadAndInstall() {
-        val update = when (val s = _state.value) {
-            is UpdateState.Available -> s.update
-            is UpdateState.NeedsPermission -> s.update
-            is UpdateState.Failed -> s.update ?: return
+        val currentState = _state.value
+        val update = when (currentState) {
+            is UpdateState.Available -> currentState.update
+            is UpdateState.NeedsPermission -> currentState.update
+            is UpdateState.Installing -> currentState.update
+            is UpdateState.Failed -> currentState.update ?: return
             else -> return
         }
         if (job?.isActive == true) return
@@ -120,14 +102,25 @@ class UpdateRepositoryImpl @Inject constructor(
             return
         }
         job = scope.launch {
-            runCatching {
-                val apk = download(update)
-                _state.value = UpdateState.Installing(update)
-                install(apk)
-            }.onFailure {
-                Log.w(TAG, "Actualización fallida: ${it.message}")
+            val cachedApk = apkFile(update).takeIf {
+                currentState is UpdateState.Installing && it.isFile && it.length() > 0L
+            }
+            val apk = if (cachedApk != null) {
+                cachedApk
+            } else {
+                runCatching { download(update) }.getOrElse {
+                    Log.w(TAG, "Descarga fallida: ${it.message}")
+                    _state.value = UpdateState.Failed(
+                        texts.get(StringsR.string.data_couldn_t_download_the_update_try_again),
+                        update,
+                    )
+                    return@launch
+                }
+            }
+            _state.value = UpdateState.Installing(update)
+            runCatching { install(apk) }.onFailure {
                 _state.value = UpdateState.Failed(
-                    texts.get(StringsR.string.data_couldn_t_download_the_update_try_again),
+                    texts.get(StringsR.string.data_couldn_t_open_the_installer),
                     update,
                 )
             }
@@ -166,10 +159,30 @@ class UpdateRepositoryImpl @Inject constructor(
         )
     }
 
+    private fun updatesDir(): File = File(context.cacheDir, UPDATES_DIR)
+
+    private fun apkFile(update: AppUpdate): File = File(updatesDir(), "OpenReel-${update.version}.apk")
+
+    private fun cleanInstalledApks() {
+        runCatching {
+            val dir = updatesDir()
+            if (!dir.isDirectory) return
+            dir.listFiles()?.forEach { file ->
+                val candidateVersion = file.name
+                    .removePrefix("OpenReel-")
+                    .removeSuffix(".apk")
+                    .takeIf { file.name.startsWith("OpenReel-") && file.name.endsWith(".apk") }
+                if (candidateVersion == null || !isNewer(candidateVersion, version.name)) {
+                    file.delete()
+                }
+            }
+        }
+    }
+
     private fun download(update: AppUpdate): File {
-        val dir = File(context.cacheDir, "updates").apply { mkdirs() }
+        val dir = updatesDir().apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() } // APK de actualizaciones anteriores
-        val file = File(dir, "OpenReel-${update.version}.apk")
+        val file = apkFile(update)
         _state.value = UpdateState.Downloading(update, 0f)
         val request = Request.Builder().url(update.apkUrl).header("User-Agent", "OpenReel/${version.name}").build()
         client.newCall(request).execute().use { response ->
@@ -200,56 +213,18 @@ class UpdateRepositoryImpl @Inject constructor(
         return file
     }
 
-    private fun install(apk: File, withProfile: Boolean = true) {
-        val dm = if (withProfile) runCatching { dexMetadata(apk) }.getOrNull() else null
-        lastApk = apk
-        lastWithDm = dm != null
-        val installer = context.packageManager.packageInstaller
-        val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-            .apply { setAppPackageName(context.packageName) }
-        val sessionId = installer.createSession(params)
-        installer.openSession(sessionId).use { session ->
-            apk.inputStream().use { input ->
-                session.openWrite("openreel.apk", 0, apk.length()).use { output ->
-                    input.copyTo(output)
-                    session.fsync(output)
-                }
-            }
-            if (dm != null) {
-                session.openWrite("openreel.dm", 0, dm.size.toLong()).use { output ->
-                    output.write(dm)
-                    session.fsync(output)
-                }
-            }
-            val intent = Intent(context, UpdateInstallReceiver::class.java)
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                (if (Build.VERSION.SDK_INT >= 31) PendingIntent.FLAG_MUTABLE else 0)
-            val pending = PendingIntent.getBroadcast(context, sessionId, intent, flags)
-            session.commit(pending.intentSender)
+    private fun install(apk: File) {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apk)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, APK_MIME_TYPE)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-    }
-
-    private fun dexMetadata(apk: File): ByteArray? {
-        if (Build.VERSION.SDK_INT !in 28..30) return null
-        val profile = ZipFile(apk).use { zip ->
-            val entry = zip.getEntry("assets/dexopt/baseline.prof") ?: return null
-            zip.getInputStream(entry).use { it.readBytes() }
-        }
-        val header = "pro\u0000010\u0000".toByteArray(Charsets.ISO_8859_1)
-        if (profile.size <= header.size || !profile.copyOfRange(0, header.size).contentEquals(header)) return null
-        val out = ByteArrayOutputStream()
-        ZipOutputStream(out).use { zip ->
-            val entry = ZipEntry("primary.prof").apply {
-                method = ZipEntry.STORED
-                size = profile.size.toLong()
-                compressedSize = profile.size.toLong()
-                crc = CRC32().apply { update(profile) }.value
+        runCatching { context.startActivity(intent) }
+            .onFailure {
+                Log.w(TAG, "No se pudo abrir el instalador: ${it.message}")
+                throw it
             }
-            zip.putNextEntry(entry)
-            zip.write(profile)
-            zip.closeEntry()
-        }
-        return out.toByteArray()
     }
 
     private fun JsonObject.string(name: String): String? = this[name]?.jsonPrimitive?.contentOrNull
@@ -258,6 +233,8 @@ class UpdateRepositoryImpl @Inject constructor(
         private const val TAG = "Update"
         private const val KEY_LAST_CHECK = "last_check"
         private const val AUTO_CHECK_INTERVAL_MS = 6 * 3_600_000L
+        private const val UPDATES_DIR = "updates"
+        private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         const val APK_NAME = "OpenReel.apk"
 
         /** "1.0.10" > "1.0.9"; ignora sufijos ("-pruebas"). */

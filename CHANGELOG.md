@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.42] - 2026-11-21
+
+### Changed
+
+- **Native Android update installer UI:** switched self-updates from `PackageInstaller.Session` to `FileProvider` + `Intent.ACTION_VIEW` so Fire TV / Android TV keeps the native installation dialog open until completion and shows the native **Done** / **Open** buttons.
+- **Automatic cleanup of cached update APKs:** deletes downloaded update APKs from `cacheDir/updates` upon `MY_PACKAGE_REPLACED` and when checking up-to-date versions.
+
 ## [1.0.41] - 2026-11-21
 
 ### Changed

@@ -32,6 +32,7 @@ dependencies {
     implementation(project(":core:domain"))
     implementation(project(":core:network"))
 
+    implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
     implementation(libs.okhttp.dnsoverhttps)
