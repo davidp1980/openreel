@@ -101,8 +101,6 @@ import com.shieldstream.tv.ui.component.firstVirtualIndex
 import com.shieldstream.tv.ui.component.formatEpisodeDate
 import com.shieldstream.tv.ui.component.loopingItems
 import com.shieldstream.tv.ui.component.onBackKey
-import com.shieldstream.tv.ui.component.RailCollapsedWidth
-import com.shieldstream.tv.ui.component.RailContentStart
 import com.shieldstream.tv.ui.component.SoftBackdropImage
 import com.shieldstream.tv.ui.component.BackdropScrim
 import com.shieldstream.tv.ui.component.rememberLoopingRowState
@@ -149,29 +147,33 @@ fun HomeScreen(
     onOpenCategory: (Category) -> Unit,
     onContentReady: () -> Unit = {},
     onInteractive: () -> Unit = {},
-    railRequester: FocusRequester,
-    focusRail: () -> Unit,
-    preferRailFocus: Boolean,
-    onRailFocusConsumed: () -> Unit,
+    navRequester: FocusRequester,
+    focusNav: () -> Unit,
+    preferNavFocus: Boolean,
+    onNavFocusConsumed: () -> Unit,
+    onTopNavVisibleChange: (Boolean) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(key = "home_${filter.name}"),
 ) {
     LaunchedEffect(filter) { viewModel.load(filter) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val hidden by viewModel.hiddenCategories.collectAsStateWithLifecycle()
 
-    CompositionLocalProvider(LocalContentStart provides RailContentStart) {
     when (val s = state) {
         HomeUiState.Loading -> Column(Modifier.fillMaxSize().background(BillboardBackground)) {
             LaunchedEffect(Unit) {
-                if (preferRailFocus) {
+                onTopNavVisibleChange(true)
+                if (preferNavFocus) {
                     withFrameNanos { }
-                    focusRail()
+                    focusNav()
                 }
             }
             BillboardSkeleton()
         }
         is HomeUiState.Error -> Column(Modifier.fillMaxSize().background(BillboardBackground)) {
-            LaunchedEffect(Unit) { onInteractive() }
+            LaunchedEffect(Unit) {
+                onTopNavVisibleChange(true)
+                onInteractive()
+            }
             HomeError(
                 s.message,
                 onRetry = { viewModel.load(filter, force = true) },
@@ -184,42 +186,42 @@ fun HomeScreen(
                 onContentReady()
             }
             HomeContent(
-            rows = s.rows,
-            featured = s.featured,
-            categories = remember(filter, hidden) {
-                when {
-                    viewModel.kidsProfile -> Category.forFilter(filter).filter { it in Category.KIDS_SAFE }
-                    else -> Category.forFilter(filter).filter { it.name !in hidden }.ifEmpty { Category.forFilter(filter) }
-                }
-            },
-            onItemClick = { item ->
-                viewModel.cancelBackgroundPrefetch()
-                onItemClick(item)
-            },
-            onContinueClick = { item, info ->
-                viewModel.cancelBackgroundPrefetch()
-                onContinueClick(item, info)
-            },
-            onNewEpisodeClick = { item, episode ->
-                viewModel.cancelBackgroundPrefetch()
-                onNewEpisodeClick(item, episode)
-            },
-            onUpNextClick = { item, episode ->
-                viewModel.cancelBackgroundPrefetch()
-                onUpNextClick(item, episode)
-            },
-            onOpenCategory = onOpenCategory,
-            onRemoveContinue = viewModel::removeFromContinue,
-            onRemoveMyList = viewModel::removeFromMyList,
-            onMarkUpNextWatched = viewModel::markUpNextWatched,
-            onRemoveUpNext = viewModel::removeUpNext,
-            railRequester = railRequester,
-            focusRail = focusRail,
-            preferRailFocus = preferRailFocus,
-            onRailFocusConsumed = onRailFocusConsumed,
+                rows = s.rows,
+                featured = s.featured,
+                categories = remember(filter, hidden) {
+                    when {
+                        viewModel.kidsProfile -> Category.forFilter(filter).filter { it in Category.KIDS_SAFE }
+                        else -> Category.forFilter(filter).filter { it.name !in hidden }.ifEmpty { Category.forFilter(filter) }
+                    }
+                },
+                onItemClick = { item ->
+                    viewModel.cancelBackgroundPrefetch()
+                    onItemClick(item)
+                },
+                onContinueClick = { item, info ->
+                    viewModel.cancelBackgroundPrefetch()
+                    onContinueClick(item, info)
+                },
+                onNewEpisodeClick = { item, episode ->
+                    viewModel.cancelBackgroundPrefetch()
+                    onNewEpisodeClick(item, episode)
+                },
+                onUpNextClick = { item, episode ->
+                    viewModel.cancelBackgroundPrefetch()
+                    onUpNextClick(item, episode)
+                },
+                onOpenCategory = onOpenCategory,
+                onRemoveContinue = viewModel::removeFromContinue,
+                onRemoveMyList = viewModel::removeFromMyList,
+                onMarkUpNextWatched = viewModel::markUpNextWatched,
+                onRemoveUpNext = viewModel::removeUpNext,
+                navRequester = navRequester,
+                focusNav = focusNav,
+                preferNavFocus = preferNavFocus,
+                onNavFocusConsumed = onNavFocusConsumed,
+                onTopNavVisibleChange = onTopNavVisibleChange,
             )
         }
-    }
     }
 }
 
@@ -327,10 +329,11 @@ private fun HomeContent(
     onRemoveMyList: (CatalogItem) -> Unit,
     onMarkUpNextWatched: (CatalogItem, Episode) -> Unit,
     onRemoveUpNext: (CatalogItem, Episode) -> Unit,
-    railRequester: FocusRequester,
-    focusRail: () -> Unit,
-    preferRailFocus: Boolean,
-    onRailFocusConsumed: () -> Unit,
+    navRequester: FocusRequester,
+    focusNav: () -> Unit,
+    preferNavFocus: Boolean,
+    onNavFocusConsumed: () -> Unit,
+    onTopNavVisibleChange: (Boolean) -> Unit,
 ) {
     CatalogFeed(
         rows = rows,
@@ -345,10 +348,11 @@ private fun HomeContent(
         onRemoveMyList = onRemoveMyList,
         onMarkUpNextWatched = onMarkUpNextWatched,
         onRemoveUpNext = onRemoveUpNext,
-        railRequester = railRequester,
-        focusRail = focusRail,
-        preferRailFocus = preferRailFocus,
-        onRailFocusConsumed = onRailFocusConsumed,
+        navRequester = navRequester,
+        focusNav = focusNav,
+        preferNavFocus = preferNavFocus,
+        onNavFocusConsumed = onNavFocusConsumed,
+        onTopNavVisibleChange = onTopNavVisibleChange,
         onExitTop = null,
         onBack = null,
         header = null,
@@ -383,10 +387,11 @@ internal fun RowsBrowser(
         onRemoveMyList = onRemoveMyList,
         onMarkUpNextWatched = onMarkUpNextWatched,
         onRemoveUpNext = onRemoveUpNext,
-        railRequester = FocusRequester.Default,
-        focusRail = {},
-        preferRailFocus = false,
-        onRailFocusConsumed = {},
+        navRequester = FocusRequester.Default,
+        focusNav = {},
+        preferNavFocus = false,
+        onNavFocusConsumed = {},
+        onTopNavVisibleChange = {},
         onExitTop = onExitTop,
         onBack = onBack,
         header = header,
@@ -408,10 +413,11 @@ private fun CatalogFeed(
     onRemoveMyList: (CatalogItem) -> Unit,
     onMarkUpNextWatched: ((CatalogItem, Episode) -> Unit)?,
     onRemoveUpNext: ((CatalogItem, Episode) -> Unit)?,
-    railRequester: FocusRequester,
-    focusRail: () -> Unit,
-    preferRailFocus: Boolean,
-    onRailFocusConsumed: () -> Unit,
+    navRequester: FocusRequester,
+    focusNav: () -> Unit,
+    preferNavFocus: Boolean,
+    onNavFocusConsumed: () -> Unit,
+    onTopNavVisibleChange: (Boolean) -> Unit,
     onExitTop: (() -> Unit)?,
     onBack: (() -> Unit)?,
     header: String?,
@@ -429,6 +435,9 @@ private fun CatalogFeed(
                 HomeFocusZone.ROWS
             },
         )
+    }
+    LaunchedEffect(activeZone) {
+        onTopNavVisibleChange(activeZone != HomeFocusZone.ROWS)
     }
     val focusZoneHolder = remember(hasBillboard) { FocusZoneHolder(activeZone) }
     val billboardFocusable = hasBillboard && activeZone != HomeFocusZone.ROWS
@@ -555,9 +564,9 @@ private fun CatalogFeed(
         LaunchedEffect(Unit) {
             withFrameNanos { }
             when {
-                preferRailFocus -> {
-                    focusRail()
-                    onRailFocusConsumed()
+                preferNavFocus -> {
+                    focusNav()
+                    onNavFocusConsumed()
                 }
                 activeZone == HomeFocusZone.HERO && featured.isNotEmpty() -> {
                     heroRequester.requestFocusWithRetry()
@@ -663,18 +672,16 @@ private fun CatalogFeed(
                                         .background(AppColors.Background),
                                 ) {
                                     if (featured.isNotEmpty()) {
-                                        // The hero starts after the collapsed rail so Left/Right move geometrically between them.
                                         FeaturedCarousel(
                                             items = featured,
                                             onOpen = onItemClick,
-                                            contentStart = RailContentStart - RailCollapsedWidth,
+                                            contentStart = AppSpacing.ScreenEdge,
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .padding(start = RailCollapsedWidth)
                                                 .focusRequester(heroRequester)
                                                 .focusProperties {
                                                     canFocus = billboardFocusable
-                                                    left = railRequester
+                                                    up = navRequester
                                                     if (categories.isNotEmpty()) down = chipsRequester
                                                 }
                                                 .onPreviewKeyEvent { event ->
@@ -702,7 +709,7 @@ private fun CatalogFeed(
                                         categories = categories,
                                         onOpen = onOpenCategory,
                                         requester = chipsRequester,
-                                        upRequester = if (featured.isNotEmpty()) heroRequester else FocusRequester.Default,
+                                        upRequester = if (featured.isNotEmpty()) heroRequester else navRequester,
                                         onFocused = {
                                             focusZoneHolder.zone = HomeFocusZone.CHIPS
                                             activeZone = HomeFocusZone.CHIPS

@@ -89,37 +89,39 @@ class SharedComponentsLocaleTest {
     }
 
     @Test
-    fun `rail icons expose Spanish accessibility labels`() {
+    fun `top nav renders Spanish labels and accessibility descriptions`() {
         Lang.current = AppLanguage.ES
-        renderRail()
+        renderTopNav()
 
-        composeRule.onNodeWithContentDescription("Inicio").assertExists()
-        composeRule.onNodeWithContentDescription("Episodios").assertExists()
-        composeRule.onNodeWithContentDescription("Series").assertExists()
-        composeRule.onNodeWithContentDescription("Directo").assertExists()
-        composeRule.onNodeWithContentDescription("Mi lista").assertExists()
+        composeRule.onNodeWithText("Inicio").assertExists()
+        composeRule.onNodeWithText("Episodios").assertExists()
+        composeRule.onNodeWithText("Series").assertExists()
+        composeRule.onNodeWithText("Directo").assertExists()
+        composeRule.onNodeWithText("Mi lista").assertExists()
+        composeRule.onNodeWithContentDescription("Buscar").assertExists()
         composeRule.onNodeWithContentDescription("Ajustes").assertExists()
     }
 
     @Test
-    fun `rail icons expose English accessibility labels`() {
+    fun `top nav renders English labels and accessibility descriptions`() {
         Lang.current = AppLanguage.EN
-        renderRail()
+        renderTopNav()
 
-        composeRule.onNodeWithContentDescription("Home").assertExists()
-        composeRule.onNodeWithContentDescription("Episodes").assertExists()
-        composeRule.onNodeWithContentDescription("TV Shows").assertExists()
-        composeRule.onNodeWithContentDescription("Live TV").assertExists()
-        composeRule.onNodeWithContentDescription("My list").assertExists()
+        composeRule.onNodeWithText("Home").assertExists()
+        composeRule.onNodeWithText("Episodes").assertExists()
+        composeRule.onNodeWithText("TV Shows").assertExists()
+        composeRule.onNodeWithText("Live TV").assertExists()
+        composeRule.onNodeWithText("My list").assertExists()
+        composeRule.onNodeWithContentDescription("Search").assertExists()
         composeRule.onNodeWithContentDescription("Settings").assertExists()
     }
 
     @Test
-    fun `rail hides settings when settings action is disabled`() {
+    fun `top nav hides settings when settings action is disabled`() {
         Lang.current = AppLanguage.EN
-        renderRail(showSettings = false)
+        renderTopNav(showSettings = false)
 
-        composeRule.onNodeWithContentDescription("Home").assertExists()
+        composeRule.onNodeWithText("Home").assertExists()
         composeRule.onNodeWithContentDescription("Settings").assertDoesNotExist()
     }
 
@@ -195,9 +197,9 @@ class SharedComponentsLocaleTest {
         }
     }
 
-    private fun renderRail(showSettings: Boolean = true) {
+    private fun renderTopNav(showSettings: Boolean = true) {
         composeRule.setContent {
-            NavRail(
+            TopNavBar(
                 selected = NavTab.HOME,
                 onSelect = {},
                 onSettings = {},

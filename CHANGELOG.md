@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.41] - 2026-11-21
+
+### Changed
+
+- **Horizontal top navigation bar (`TopNavBar`):** replaced the left navigation rail and its translucent scrim with a clean horizontal top bar (profile switcher on the left, section pills in the center, Search and Settings on the right). On Home/Movies/TV it hides automatically when scrolling down into catalog rows, and on secondary tabs it sits cleanly above the content, freeing 100% of horizontal screen width.
+
 ## [1.0.40] - 2026-11-21
 
 ### Added

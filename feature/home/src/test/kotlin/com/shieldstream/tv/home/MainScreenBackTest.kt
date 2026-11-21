@@ -21,10 +21,10 @@ class MainScreenBackTest {
     }
 
     @Test
-    fun `exit confirmation requires the navigation rail to be focused`() {
-        assertTrue(shouldRequestExit(categoryOpen = false, railFocused = true))
-        assertFalse(shouldRequestExit(categoryOpen = false, railFocused = false))
-        assertFalse(shouldRequestExit(categoryOpen = true, railFocused = true))
-        assertFalse(shouldRequestExit(categoryOpen = true, railFocused = false))
+    fun `exit confirmation requires the top navigation bar to be focused`() {
+        assertTrue(shouldRequestExit(categoryOpen = false, navFocused = true))
+        assertFalse(shouldRequestExit(categoryOpen = false, navFocused = false))
+        assertFalse(shouldRequestExit(categoryOpen = true, navFocused = true))
+        assertFalse(shouldRequestExit(categoryOpen = true, navFocused = false))
     }
 }
