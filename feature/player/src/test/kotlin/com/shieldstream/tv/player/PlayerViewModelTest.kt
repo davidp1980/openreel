@@ -264,13 +264,19 @@ class PlayerViewModelTest {
         every { trackMemory.audio("tt1") } returns "en"
         val enFormat = Format.Builder().setId("a-en").setLanguage("en").setSampleMimeType(MimeTypes.AUDIO_AAC).build()
         val esFormat = Format.Builder().setId("a-es").setLanguage("es").setSampleMimeType(MimeTypes.AUDIO_AAC).build()
-        val audioGroup = Tracks.Group(
-            TrackGroup("audio", esFormat, enFormat),
+        val esGroup = Tracks.Group(
+            TrackGroup("audio-es", esFormat),
             false,
-            intArrayOf(C.FORMAT_HANDLED, C.FORMAT_HANDLED),
-            booleanArrayOf(true, false),
+            intArrayOf(C.FORMAT_HANDLED),
+            booleanArrayOf(true),
         )
-        val players = FakePlayers(Tracks(listOf(audioGroup)))
+        val enGroup = Tracks.Group(
+            TrackGroup("audio-en", enFormat),
+            false,
+            intArrayOf(C.FORMAT_HANDLED),
+            booleanArrayOf(false),
+        )
+        val players = FakePlayers(Tracks(listOf(esGroup, enGroup)))
         val fixture = fixture(players, flowOf(40), SubtitlePreference.OFF, trackMemory = trackMemory)
 
         fixture.viewModel.rememberAudioLanguage("es")
@@ -284,8 +290,8 @@ class PlayerViewModelTest {
         yield()
         players.listener(0).onPlaybackStateChanged(Player.STATE_READY)
 
-        val override = players.player(0).trackSelectionParameters.overrides[audioGroup.mediaTrackGroup]
-        assertEquals(listOf(1), override?.trackIndices)
+        val override = players.parameters[0].overrides[enGroup.mediaTrackGroup]
+        assertEquals(listOf(0), override?.trackIndices)
         fixture.viewModel.onStop()
         fixture.viewModel.viewModelScope.cancel()
     }
