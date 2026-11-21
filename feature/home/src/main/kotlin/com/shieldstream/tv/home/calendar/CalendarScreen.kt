@@ -72,6 +72,7 @@ private const val PANEL_DEBOUNCE_MS = 150L
 fun CalendarScreen(
     onOpenEpisode: (CalendarEpisode) -> Unit = {},
     onOpenRelease: (CalendarRelease) -> Unit = {},
+    preferNavFocus: Boolean = false,
     viewModel: CalendarViewModel = hiltViewModel(),
 ) {
     // The root reads only the month and today, so moving between days of a month does not
@@ -129,6 +130,7 @@ fun CalendarScreen(
     // selected day, otherwise the rail stays expanded over the screen. Coming back from a details
     // page returns to the poster that opened it.
     LaunchedEffect(Unit) {
+        if (preferNavFocus) return@LaunchedEffect
         val poster = viewModel.lastFocus as? CalendarFocusTarget.Poster
         val target = poster?.let { focus.navigator.clamp(it, layout()) }
         if (target is CalendarFocusTarget.Poster) {

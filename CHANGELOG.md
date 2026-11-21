@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.45] - 2026-11-21
+
+### Changed
+
+- **Switch sections on top nav focus:** moving across section pills in `TopNavBar` now displays each section immediately without requiring OK, while pressing OK or Down enters the section's content.
+- **Consistent top nav focus across all tabs:** unified `MainScreen` onto a single persistent `TopNavBar` instance so switching to Live TV, Episodes, Calendar, or My List no longer unmounts the bar or steals focus, and guarded initial focus restoration in `LiveTvScreen`, `CalendarScreen`, and `MyListScreen` with `preferNavFocus`.
+
 ## [1.0.44] - 2026-11-21
 
 ### Changed

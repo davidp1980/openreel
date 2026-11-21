@@ -49,6 +49,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun MyListScreen(
     onItemClick: (CatalogItem) -> Unit,
+    preferNavFocus: Boolean = false,
     viewModel: MyListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -57,7 +58,7 @@ fun MyListScreen(
     var cardToRestore by remember { mutableStateOf<String?>(null) }
     var menuItem by remember { mutableStateOf<CatalogItem?>(null) }
     LaunchedEffect(state is MyListUiState.Content) {
-        if (state !is MyListUiState.Content || lastCardKey == null) return@LaunchedEffect
+        if (preferNavFocus || state !is MyListUiState.Content || lastCardKey == null) return@LaunchedEffect
         withFrameNanos { }
         repeat(4) {
             if (runCatching { cardRequester.requestFocus() }.isSuccess) return@LaunchedEffect

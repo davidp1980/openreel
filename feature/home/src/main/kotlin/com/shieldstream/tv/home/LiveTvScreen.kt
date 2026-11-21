@@ -90,6 +90,7 @@ import java.util.Date
 fun LiveTvScreen(
     onPlayLive: (List<LiveChannelEntry>, Int) -> Unit,
     consumeLastLiveChannelKey: () -> String? = { null },
+    preferNavFocus: Boolean = false,
     viewModel: LiveTvViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -155,7 +156,9 @@ fun LiveTvScreen(
         rowItemIndexForKey(effectiveSections, key)?.let { itemIndex ->
             listState.scrollToItem(itemIndex)
         }
-        cardRequester.requestFocusWithRetry()
+        if (!preferNavFocus || focusRestoreTick > 0) {
+            cardRequester.requestFocusWithRetry()
+        }
     }
 
     Box(Modifier.fillMaxSize()) {

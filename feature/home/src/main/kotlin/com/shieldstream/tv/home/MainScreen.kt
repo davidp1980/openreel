@@ -5,9 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -21,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.unit.dp
 import com.shieldstream.tv.model.CatalogItem
 import com.shieldstream.tv.model.Category
 import com.shieldstream.tv.model.ContinueInfo
@@ -30,6 +30,7 @@ import com.shieldstream.tv.model.LiveChannelEntry
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.shieldstream.tv.ui.component.NavTab
 import com.shieldstream.tv.ui.component.TopNavBar
+import com.shieldstream.tv.ui.component.TopNavHeight
 import com.shieldstream.tv.ui.component.onBackKey
 import com.shieldstream.tv.ui.component.requestFocusWithRetry
 import com.shieldstream.tv.home.calendar.CalendarScreen
@@ -91,8 +92,7 @@ fun MainScreen(
     val onSelectTab: (NavTab) -> Unit = { selected ->
         if (selected in tabs && selected != tab) {
             savedTab = selected
-            focusMenuAfterSwitch = selected != NavTab.SEARCH && selected != NavTab.MY_LIST &&
-                selected != NavTab.EPISODES && selected != NavTab.CALENDAR && selected != NavTab.LIVE
+            focusMenuAfterSwitch = selected != NavTab.SEARCH
         }
     }
     val newEpisodeCount = (episodeState as? EpisodeCenterUiState.Content)?.newEpisodeCount ?: 0
@@ -111,72 +111,55 @@ fun MainScreen(
                 onItemClick = onOpenItem,
                 onBack = { category = null },
             )
-        } else if (!isBrowseTab) {
-            Column(Modifier.fillMaxSize()) {
-                TopNavBar(
-                    selected = tab,
-                    onSelect = onSelectTab,
-                    onSettings = onOpenSettings,
-                    selectedRequester = navRequester,
-                    contentRequester = contentRequester,
-                    focusable = navFocusable,
-                    showSettings = !kidsProfile,
-                    solidBackground = true,
-                    newEpisodeCount = newEpisodeCount,
-                    tabs = tabs,
-                    profileInitial = profileInitial,
-                    profileAvatar = profileAvatar,
-                    onProfile = onSwitchProfile,
-                    onFocusChange = onNavFocusChange,
-                )
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .onBackKey(enabled = true) { focusNav() }
-                        .focusRequester(contentRequester)
-                        .focusGroup(),
-                ) {
-                    when (tab) {
-                        NavTab.CALENDAR -> CalendarScreen(
-                            onOpenEpisode = { onOpenNewEpisode(it.show, it.episode) },
-                            onOpenRelease = { onOpenItem(it.item) },
-                        )
-                        NavTab.SEARCH -> SearchScreen(onItemClick = onOpenItem)
-                        NavTab.EPISODES -> EpisodeCenterScreen(onOpenEpisode = onOpenNewEpisode, viewModel = episodeCenter)
-                        NavTab.LIVE -> LiveTvScreen(
-                            onPlayLive = onPlayLive,
-                            consumeLastLiveChannelKey = consumeLastLiveChannelKey,
-                        )
-                        else -> saveable.SaveableStateProvider("tab_${tab.name}") { MyListScreen(onItemClick = onOpenItem) }
-                    }
-                }
-            }
         } else {
             Box(Modifier.fillMaxSize()) {
                 Box(
                     Modifier
                         .fillMaxSize()
+                        .padding(top = if (isBrowseTab) 0.dp else TopNavHeight)
                         .onBackKey(enabled = true) { if (showTopNav) focusNav() else revealTopNav = true }
                         .focusRequester(contentRequester)
                         .focusGroup(),
                 ) {
-                    saveable.SaveableStateProvider("tab_${tab.name}") {
-                        HomeScreen(
-                            filter = filter,
-                            onItemClick = onOpenItem,
-                            onContinueClick = onContinue,
-                            onNewEpisodeClick = onOpenNewEpisode,
-                            onUpNextClick = onUpNext,
-                            onOpenCategory = { category = it },
-                            onContentReady = episodeCenter::activate,
-                            onInteractive = { homeInteractive = true },
-                            navRequester = navRequester,
-                            focusNav = focusNav,
-                            preferNavFocus = focusMenuAfterSwitch,
-                            onNavFocusConsumed = { focusMenuAfterSwitch = false },
-                            onTopNavVisibleChange = { homeTopNavVisible = it },
-                        )
+                    if (isBrowseTab) {
+                        saveable.SaveableStateProvider("tab_${tab.name}") {
+                            HomeScreen(
+                                filter = filter,
+                                onItemClick = onOpenItem,
+                                onContinueClick = onContinue,
+                                onNewEpisodeClick = onOpenNewEpisode,
+                                onUpNextClick = onUpNext,
+                                onOpenCategory = { category = it },
+                                onContentReady = episodeCenter::activate,
+                                onInteractive = { homeInteractive = true },
+                                navRequester = navRequester,
+                                focusNav = { if (!navFocused) focusNav() },
+                                preferNavFocus = navFocused || focusMenuAfterSwitch,
+                                onNavFocusConsumed = { focusMenuAfterSwitch = false },
+                                onTopNavVisibleChange = { homeTopNavVisible = it },
+                            )
+                        }
+                    } else {
+                        when (tab) {
+                            NavTab.CALENDAR -> CalendarScreen(
+                                onOpenEpisode = { onOpenNewEpisode(it.show, it.episode) },
+                                onOpenRelease = { onOpenItem(it.item) },
+                                preferNavFocus = navFocused || focusMenuAfterSwitch,
+                            )
+                            NavTab.SEARCH -> SearchScreen(onItemClick = onOpenItem)
+                            NavTab.EPISODES -> EpisodeCenterScreen(onOpenEpisode = onOpenNewEpisode, viewModel = episodeCenter)
+                            NavTab.LIVE -> LiveTvScreen(
+                                onPlayLive = onPlayLive,
+                                consumeLastLiveChannelKey = consumeLastLiveChannelKey,
+                                preferNavFocus = navFocused || focusMenuAfterSwitch,
+                            )
+                            else -> saveable.SaveableStateProvider("tab_${tab.name}") {
+                                MyListScreen(
+                                    onItemClick = onOpenItem,
+                                    preferNavFocus = navFocused || focusMenuAfterSwitch,
+                                )
+                            }
+                        }
                     }
                 }
                 if (showTopNav) {
@@ -188,7 +171,7 @@ fun MainScreen(
                         contentRequester = contentRequester,
                         focusable = navFocusable,
                         showSettings = !kidsProfile,
-                        solidBackground = false,
+                        solidBackground = !isBrowseTab,
                         newEpisodeCount = newEpisodeCount,
                         tabs = tabs,
                         profileInitial = profileInitial,

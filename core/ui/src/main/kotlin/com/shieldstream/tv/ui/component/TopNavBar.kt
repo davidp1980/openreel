@@ -148,7 +148,11 @@ fun TopNavBar(
                         label = label,
                         selected = tab == selected,
                         badgeCount = if (tab == NavTab.EPISODES) newEpisodeCount else 0,
-                        onClick = { onSelect(tab) },
+                        onClick = {
+                            onSelect(tab)
+                            runCatching { contentRequester.requestFocus() }
+                        },
+                        onFocused = { onSelect(tab) },
                         contentRequester = contentRequester,
                         focusable = focusable,
                         modifier = if (tab == selected) Modifier.focusRequester(selectedRequester) else Modifier,
@@ -227,6 +231,7 @@ private fun TopNavTabPill(
     selected: Boolean,
     badgeCount: Int,
     onClick: () -> Unit,
+    onFocused: () -> Unit,
     contentRequester: FocusRequester,
     focusable: Boolean,
     modifier: Modifier = Modifier,
@@ -263,7 +268,10 @@ private fun TopNavTabPill(
                 canFocus = focusable
                 down = contentRequester
             }
-            .onFocusChanged { focused = it.isFocused }
+            .onFocusChanged {
+                focused = it.isFocused
+                if (it.isFocused) onFocused()
+            }
             .tvClickable(onClick = onClick)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
