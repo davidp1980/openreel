@@ -614,6 +614,7 @@ class HomeViewModelsTest {
             watchProgress = mockk { every { progress } returns MutableStateFlow(emptyMap()) },
             episodeReleases = releases,
             tracking = tracking(),
+            trakt = mockk(relaxed = true),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         advanceUntilIdle()
@@ -651,6 +652,7 @@ class HomeViewModelsTest {
             watchProgress = mockk { every { progress } returns MutableStateFlow(emptyMap()) },
             episodeReleases = mockk(relaxed = true),
             tracking = tracking(),
+            trakt = mockk(relaxed = true),
         )
         val first = viewModel.uiState.first { it is MyListUiState.Content }
         assertEquals(20, (first as MyListUiState.Content).items.size)
@@ -684,6 +686,7 @@ class HomeViewModelsTest {
             watchProgress = mockk { every { progress } returns MutableStateFlow(emptyMap()) },
             episodeReleases = releases,
             tracking = tracking(),
+            trakt = mockk(relaxed = true),
         )
         backgroundScope.launch { viewModel.uiState.collect {} }
         // runCurrent, not advanceUntilIdle: advancing virtual time would expire the status timeout.
@@ -715,6 +718,7 @@ class HomeViewModelsTest {
             watchProgress = mockk { every { progress } returns MutableStateFlow(emptyMap()) },
             episodeReleases = mockk(relaxed = true),
             tracking = tracking(),
+            trakt = mockk(relaxed = true),
         )
         viewModel.setSort(MyListSort.TITLE)
         backgroundScope.launch { viewModel.uiState.collect {} }
@@ -726,6 +730,102 @@ class HomeViewModelsTest {
         allowRemaining.complete(Unit)
         runCurrent()
         assertEquals(25, viewModel.content().items.size)
+    }
+
+    @Test
+    fun `my list history groups shows, sorts by recent and title, and skips episode releases`() = runTest {
+        val movie = item("10", MediaType.MOVIE, "Alpha Movie")
+        val show = item("20", MediaType.TV, "Zulu Show")
+        val catalog = mockk<CatalogRepository>()
+        coEvery { catalog.cachedItem(any(), any()) } returns null
+        coEvery { catalog.getItem(MediaType.MOVIE, "10") } returns movie
+        coEvery { catalog.getItem(MediaType.TV, "20") } returns show
+        val releases = mockk<EpisodeReleaseRepository>(relaxed = true)
+        val trakt = mockk<TraktRepository>(relaxed = true) {
+            every { isConnected } returns true
+        }
+        val progressMap = mapOf(
+            WatchProgress.movieKey("10") to watched(100),
+            WatchProgress.episodeKey("20", 1, 1) to watched(150),
+            WatchProgress.episodeKey("20", 2, 4) to watched(300),
+            WatchProgress.movieKey("30") to progress(400),
+        )
+        val viewModel = MyListViewModel(
+            catalogRepository = catalog,
+            myList = mockk { every { entries } returns MutableStateFlow(emptyList()) },
+            watchProgress = mockk { every { progress } returns MutableStateFlow(progressMap) },
+            episodeReleases = releases,
+            tracking = tracking(),
+            trakt = trakt,
+        )
+        backgroundScope.launch { viewModel.uiState.collect {} }
+
+        viewModel.setFilter(MyListFilter.HISTORY)
+        advanceUntilIdle()
+
+        val recentState = viewModel.content()
+        assertEquals(MyListFilter.HISTORY, recentState.filter)
+        assertEquals(true, recentState.traktConnected)
+        assertEquals(listOf("20", "10"), recentState.items.map { it.id })
+        assertEquals(HistoryBadge(season = 2, episode = 4, watchedCount = 2), recentState.historyBadges[show.key])
+        assertNull(recentState.historyBadges[movie.key])
+        coVerify(exactly = 0) { releases.status(any()) }
+        coVerify(exactly = 0) { releases.isComplete(any()) }
+        coVerify(exactly = 0) { catalog.getItem(MediaType.MOVIE, "30") }
+
+        viewModel.setSort(MyListSort.TITLE)
+        advanceUntilIdle()
+        assertEquals(listOf("10", "20"), viewModel.content().items.map { it.id })
+    }
+
+    @Test
+    fun `my list removeFromHistory and clearHistory remove watched keys locally and on Trakt while keeping resumable`() = runTest {
+        val movie = item("10", MediaType.MOVIE, "Movie")
+        val show = item("20", MediaType.TV, "Show")
+        val progressState = MutableStateFlow(
+            mapOf(
+                WatchProgress.movieKey("10") to watched(100),
+                WatchProgress.episodeKey("20", 1, 1) to watched(200),
+                WatchProgress.episodeKey("20", 1, 2) to watched(300),
+                WatchProgress.episodeKey("20", 1, 3) to progress(350),
+                WatchProgress.movieKey("30") to progress(400),
+            ),
+        )
+        val watchProgress = mockk<WatchProgressRepository>(relaxed = true) {
+            every { progress } returns progressState
+            every { removeRemote(any()) } answers {
+                val keys = firstArg<Collection<String>>().toSet()
+                progressState.value = progressState.value - keys
+            }
+        }
+        val trakt = mockk<TraktRepository>(relaxed = true)
+        val viewModel = MyListViewModel(
+            catalogRepository = catalog(movie, show),
+            myList = mockk { every { entries } returns MutableStateFlow(emptyList()) },
+            watchProgress = watchProgress,
+            episodeReleases = mockk(relaxed = true),
+            tracking = tracking(),
+            trakt = trakt,
+        )
+
+        viewModel.removeFromHistory(show)
+        val expectedShowKeys = listOf(
+            WatchProgress.episodeKey("20", 1, 1),
+            WatchProgress.episodeKey("20", 1, 2),
+        )
+        verify(exactly = 1) { trakt.setWatched(match { it.toSet() == expectedShowKeys.toSet() }, watched = false) }
+        verify(exactly = 1) { watchProgress.removeRemote(match { it.toSet() == expectedShowKeys.toSet() }) }
+        assertTrue(progressState.value.containsKey(WatchProgress.movieKey("10")))
+        assertTrue(progressState.value.containsKey(WatchProgress.episodeKey("20", 1, 3)))
+        assertTrue(progressState.value.containsKey(WatchProgress.movieKey("30")))
+
+        viewModel.clearHistory()
+        verify(exactly = 1) { trakt.setWatched(listOf(WatchProgress.movieKey("10")), watched = false) }
+        verify(exactly = 1) { watchProgress.removeRemote(listOf(WatchProgress.movieKey("10"))) }
+        assertEquals(
+            setOf(WatchProgress.episodeKey("20", 1, 3), WatchProgress.movieKey("30")),
+            progressState.value.keys,
+        )
     }
 
     @Test

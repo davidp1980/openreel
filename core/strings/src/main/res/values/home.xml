@@ -8,6 +8,13 @@
     <string name="home_all">All</string>
     <string name="home_tv_shows">TV Shows</string>
     <string name="home_movies">Movies</string>
+    <string name="home_history">History</string>
+    <string name="home_history_empty">Your watch history is empty.</string>
+    <string name="home_remove_from_history">Remove from history</string>
+    <string name="home_clear_history">Clear history</string>
+    <string name="home_clear_history_confirm_title">Clear all watch history?</string>
+    <string name="home_clear_history_confirm_trakt_title">Clear all watch history (local and Trakt)?</string>
+    <string name="home_history_episode_tag">S%1$d:E%2$d</string>
     <string name="home_hold_ok_to_remove">Hold OK for options</string>
     <string name="home_new_first">New first</string>
     <string name="home_recent">Recent</string>

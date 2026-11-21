@@ -8,6 +8,13 @@
     <string name="home_all">Todo</string>
     <string name="home_tv_shows">Series</string>
     <string name="home_movies">Películas</string>
+    <string name="home_history">Historial</string>
+    <string name="home_history_empty">Tu historial de visualización está vacío.</string>
+    <string name="home_remove_from_history">Quitar del historial</string>
+    <string name="home_clear_history">Vaciar historial</string>
+    <string name="home_clear_history_confirm_title">¿Vaciar todo el historial?</string>
+    <string name="home_clear_history_confirm_trakt_title">¿Vaciar todo el historial (local y Trakt)?</string>
+    <string name="home_history_episode_tag">T%1$d:E%2$d</string>
     <string name="home_hold_ok_to_remove">Mantén OK para opciones</string>
     <string name="home_new_first">Nuevos primero</string>
     <string name="home_recent">Recientes</string>

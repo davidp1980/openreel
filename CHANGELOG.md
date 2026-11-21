@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.48] - 2026-11-21
+
+### Added
+
+- **Watch history tab in My List:** added a *History* filter in `MyListScreen` and `MyListViewModel` showing watched movies and shows (grouped per show with the latest watched episode badge `S#:E#` / `T#:E#`), sortable by recent or A–Z.
+- **Per-item and full history removal synced with Trakt:** long-pressing a title in History lets you remove it from watch history (`removeFromHistory`), and a *Clear history* control with confirmation clears all watched entries locally and on Trakt (`clearHistory` via `trakt.setWatched(..., watched = false)`), while leaving in-progress resume entries untouched.
+
 ## [1.0.47] - 2026-11-21
 
 ### Changed
