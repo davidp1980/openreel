@@ -161,10 +161,15 @@ class HomeExtrasSource @Inject constructor(
         val recentLimit = isoDate(Date(System.currentTimeMillis() - 60L * 24 * 3600 * 1000))
         val used = HashSet<Int>()
         val picks = ArrayList<Pick>()
-        fun pick(candidates: List<com.shieldstream.tv.network.dto.TmdbMovieDto>, badge: FeaturedBadge, predicate: (com.shieldstream.tv.network.dto.TmdbMovieDto) -> Boolean = { true }) {
-            val chosen = candidates.firstOrNull { it.id !in used && "MOVIE:${it.id}" !in excludedKeys && predicate(it) }
-                ?: candidates.firstOrNull { it.id !in used && predicate(it) }
-                ?: return
+        fun pick(
+            candidates: List<com.shieldstream.tv.network.dto.TmdbMovieDto>,
+            badge: FeaturedBadge,
+            allowExcluded: Boolean = false,
+            predicate: (com.shieldstream.tv.network.dto.TmdbMovieDto) -> Boolean = { true },
+        ) {
+            val chosen = candidates.firstOrNull {
+                it.id !in used && (allowExcluded || "MOVIE:${it.id}" !in excludedKeys) && predicate(it)
+            } ?: return
             used.add(chosen.id)
             picks += Pick(MediaType.MOVIE, chosen.id, badge)
         }
@@ -176,6 +181,7 @@ class HomeExtrasSource @Inject constructor(
         pick(trending, FeaturedBadge.RISING)
         pick(topRated.sortedByDescending { it.vote_average }, FeaturedBadge.ACCLAIMED) { it.vote_count >= 500 }
         if (picks.size < 5) pick(topRated, FeaturedBadge.ACCLAIMED)
+        if (picks.isEmpty()) pick(nowPlaying + trending + topRated, FeaturedBadge.POPULAR, allowExcluded = true)
         picks.take(5)
     }
 
@@ -191,10 +197,15 @@ class HomeExtrasSource @Inject constructor(
         val recentLimit = isoDate(Date(System.currentTimeMillis() - 60L * 24 * 3600 * 1000))
         val used = HashSet<Int>()
         val picks = ArrayList<Pick>()
-        fun pick(candidates: List<com.shieldstream.tv.network.dto.TmdbTvDto>, badge: FeaturedBadge, predicate: (com.shieldstream.tv.network.dto.TmdbTvDto) -> Boolean = { true }) {
-            val chosen = candidates.firstOrNull { it.id !in used && "TV:${it.id}" !in excludedKeys && predicate(it) }
-                ?: candidates.firstOrNull { it.id !in used && predicate(it) }
-                ?: return
+        fun pick(
+            candidates: List<com.shieldstream.tv.network.dto.TmdbTvDto>,
+            badge: FeaturedBadge,
+            allowExcluded: Boolean = false,
+            predicate: (com.shieldstream.tv.network.dto.TmdbTvDto) -> Boolean = { true },
+        ) {
+            val chosen = candidates.firstOrNull {
+                it.id !in used && (allowExcluded || "TV:${it.id}" !in excludedKeys) && predicate(it)
+            } ?: return
             used.add(chosen.id)
             picks += Pick(MediaType.TV, chosen.id, badge)
         }
@@ -205,6 +216,7 @@ class HomeExtrasSource @Inject constructor(
         pick(trending, FeaturedBadge.RISING)
         pick(topRated.sortedByDescending { it.vote_average }, FeaturedBadge.ACCLAIMED) { it.vote_count >= 150 }
         if (picks.size < 5) pick(topRated, FeaturedBadge.ACCLAIMED)
+        if (picks.isEmpty()) pick(trending + popular + topRated, FeaturedBadge.POPULAR, allowExcluded = true)
         picks.take(5)
     }
 
