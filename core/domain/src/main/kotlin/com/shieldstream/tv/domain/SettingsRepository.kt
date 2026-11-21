@@ -83,6 +83,10 @@ interface SettingsRepository {
     val debridService: Flow<DebridService>
     suspend fun setDebridService(service: DebridService)
 
+    /** Optional user-imported M3U/M3U8 playlist URL for Live TV. App-wide; null by default. */
+    val customM3uUrl: Flow<String?>
+    suspend fun setCustomM3uUrl(url: String?)
+
     companion object {
         const val DEFAULT_HOME_ROW_ITEM_LIMIT = 30
         const val MIN_HOME_ROW_ITEM_LIMIT = 10

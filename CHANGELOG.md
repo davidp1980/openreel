@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.0.40] - 2026-11-21
+
+### Added
+
+- **Import custom M3U playlist URL in Live TV:** added an **Import M3U** / **M3U playlist** action in the Live TV header that lets users configure, validate, and remove their own HTTP/HTTPS M3U/M3U8 playlist URL, automatically grouping channels by `group-title` alongside RTVE.
+
+### Removed
+
+- **Built-in third-party TDT and FAST feeds:** removed the hardcoded TDTChannels and FAST (Samsung TV Plus, Pluto TV, Plex TV) playlists so only RTVE is included out of the box.
+
 ## [1.0.39] - 2026-11-20
 
 ### Changed

@@ -69,4 +69,19 @@
     <string name="live_tv_blocked_upcoming_soon">Esta emisión aún no ha comenzado.</string>
     <string name="live_tv_blocked_paid">Esta emisión requiere RTVE Play+.</string>
     <string name="live_tv_blocked_unavailable">Emisión no disponible ahora mismo.</string>
+    <string name="live_tv_m3u_import">Importar M3U</string>
+    <string name="live_tv_m3u_edit">Lista M3U</string>
+    <string name="live_tv_m3u_dialog_title">Importar lista M3U</string>
+    <string name="live_tv_m3u_dialog_subtitle">Introduce una URL HTTP o HTTPS de tu propia lista M3U/M3U8.</string>
+    <string name="live_tv_m3u_dialog_placeholder">https://ejemplo.com/lista.m3u</string>
+    <string name="live_tv_m3u_dialog_hint">La lista se comprobará antes de guardarla.</string>
+    <string name="live_tv_m3u_dialog_checking">Comprobando lista M3U…</string>
+    <string name="live_tv_m3u_dialog_save">Importar y guardar</string>
+    <string name="live_tv_m3u_dialog_remove">Eliminar lista</string>
+    <string name="live_tv_m3u_dialog_cancel">Cancelar</string>
+    <string name="live_tv_m3u_error_empty">Introduce una URL M3U primero.</string>
+    <string name="live_tv_m3u_error_invalid_url">Introduce una URL http:// o https:// válida.</string>
+    <string name="live_tv_m3u_error_load">No se pudieron cargar canales desde esa URL M3U.</string>
+    <string name="live_tv_m3u_imported">%1$d canales importados desde M3U.</string>
+    <string name="live_tv_m3u_removed">Lista M3U eliminada.</string>
 </resources>

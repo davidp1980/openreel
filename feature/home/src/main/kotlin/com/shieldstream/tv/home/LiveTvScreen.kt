@@ -15,11 +15,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,10 +45,22 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -59,6 +76,7 @@ import com.shieldstream.tv.strings.localizedStringResource
 import com.shieldstream.tv.ui.component.CardImage
 import com.shieldstream.tv.ui.component.StatusPill
 import com.shieldstream.tv.ui.component.TvButton
+import com.shieldstream.tv.ui.component.onBackKey
 import com.shieldstream.tv.ui.component.requestFocusWithRetry
 import com.shieldstream.tv.ui.component.tvClickable
 import com.shieldstream.tv.ui.theme.AppColors
@@ -76,6 +94,8 @@ fun LiveTvScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val notice by viewModel.notice.collectAsStateWithLifecycle()
+    val m3uEditor by viewModel.m3uEditor.collectAsStateWithLifecycle()
+    val customM3uUrl by viewModel.customM3uUrl.collectAsStateWithLifecycle()
     val cardRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
@@ -143,12 +163,23 @@ fun LiveTvScreen(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
                     text = localizedStringResource(StringsR.string.live_tv_title),
                     color = Color.White,
                     style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
                     modifier = Modifier.weight(1f),
+                )
+                TvButton(
+                    text = localizedStringResource(
+                        if (customM3uUrl.isNullOrBlank()) {
+                            StringsR.string.live_tv_m3u_import
+                        } else {
+                            StringsR.string.live_tv_m3u_edit
+                        },
+                    ),
+                    onClick = viewModel::openM3uEditor,
                 )
                 TvButton(
                     text = localizedStringResource(StringsR.string.live_tv_refresh),
@@ -309,6 +340,159 @@ fun LiveTvScreen(
                     .background(AppColors.PillScrim, AppShapes.Pill)
                     .padding(horizontal = 20.dp, vertical = 8.dp),
             )
+        }
+
+        m3uEditor?.let { editor ->
+            M3uPlaylistDialog(
+                editor = editor,
+                onSave = viewModel::saveM3uUrl,
+                onRemove = viewModel::removeM3uUrl,
+                onClose = viewModel::closeM3uEditor,
+            )
+        }
+    }
+}
+
+@Composable
+private fun M3uPlaylistDialog(
+    editor: M3uEditorState,
+    onSave: (String) -> Unit,
+    onRemove: () -> Unit,
+    onClose: () -> Unit,
+) {
+    var input by rememberSaveable(editor.initialUrl) { mutableStateOf(editor.initialUrl) }
+    val fieldRequester = remember { FocusRequester() }
+    val saveRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    var fieldFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        runCatching { fieldRequester.requestFocus() }
+    }
+    LaunchedEffect(editor.busy, editor.error) {
+        if (!editor.busy && editor.error != null) {
+            withFrameNanos { }
+            runCatching { saveRequester.requestFocus() }
+        }
+    }
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.78f))
+            .onBackKey(enabled = true) { onClose() },
+    ) {
+        Column(
+            modifier = Modifier
+                .width(760.dp)
+                .background(AppColors.Surface, AppShapes.Panel)
+                .border(1.dp, Color.White.copy(alpha = 0.12f), AppShapes.Panel)
+                .padding(36.dp),
+        ) {
+            Text(
+                text = localizedStringResource(StringsR.string.live_tv_m3u_dialog_title),
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = Color.White,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = localizedStringResource(StringsR.string.live_tv_m3u_dialog_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.65f),
+            )
+            Spacer(Modifier.height(24.dp))
+            BasicTextField(
+                value = input,
+                onValueChange = { input = it.replace("\n", "") },
+                singleLine = true,
+                enabled = !editor.busy,
+                textStyle = TextStyle(color = Color.White, fontSize = 18.sp, fontFamily = FontFamily.Monospace),
+                cursorBrush = SolidColor(Color.White),
+                keyboardOptions = KeyboardOptions(
+                    autoCorrectEnabled = false,
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(onDone = {
+                    keyboard?.hide()
+                    onSave(input)
+                }),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(fieldRequester)
+                    .onFocusChanged { fieldFocused = it.isFocused }
+                    .onPreviewKeyEvent { event ->
+                        when (event.key) {
+                            Key.DirectionCenter, Key.Enter -> {
+                                if (event.type == KeyEventType.KeyUp) keyboard?.show()
+                                true
+                            }
+                            Key.DirectionDown -> {
+                                if (event.type == KeyEventType.KeyDown) runCatching { saveRequester.requestFocus() }
+                                true
+                            }
+                            else -> false
+                        }
+                    },
+                decorationBox = { field ->
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(AppColors.Field, AppShapes.Control)
+                            .border(
+                                width = if (fieldFocused) 2.dp else 1.dp,
+                                color = if (fieldFocused) Color.White else Color.White.copy(alpha = 0.2f),
+                                shape = AppShapes.Control,
+                            )
+                            .padding(horizontal = 18.dp, vertical = 16.dp),
+                    ) {
+                        if (input.isEmpty()) {
+                            Text(
+                                text = localizedStringResource(StringsR.string.live_tv_m3u_dialog_placeholder),
+                                fontSize = 18.sp,
+                                color = Color.White.copy(alpha = 0.35f),
+                            )
+                        }
+                        field()
+                    }
+                },
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = when {
+                    editor.busy -> localizedStringResource(StringsR.string.live_tv_m3u_dialog_checking)
+                    editor.error != null -> editor.error
+                    else -> localizedStringResource(StringsR.string.live_tv_m3u_dialog_hint)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = when {
+                    editor.error != null -> AppColors.Error
+                    else -> Color.White.copy(alpha = 0.6f)
+                },
+            )
+            Spacer(Modifier.height(24.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TvButton(
+                    text = localizedStringResource(StringsR.string.live_tv_m3u_dialog_save),
+                    onClick = { onSave(input) },
+                    enabled = !editor.busy,
+                    modifier = Modifier.focusRequester(saveRequester),
+                )
+                if (editor.hasSavedUrl) {
+                    TvButton(
+                        text = localizedStringResource(StringsR.string.live_tv_m3u_dialog_remove),
+                        onClick = onRemove,
+                        enabled = !editor.busy,
+                    )
+                }
+                TvButton(
+                    text = localizedStringResource(StringsR.string.live_tv_m3u_dialog_cancel),
+                    onClick = onClose,
+                    enabled = !editor.busy,
+                )
+            }
         }
     }
 }

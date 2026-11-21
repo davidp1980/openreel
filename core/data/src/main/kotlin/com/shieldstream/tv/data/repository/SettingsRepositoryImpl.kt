@@ -214,6 +214,19 @@ class SettingsRepositoryImpl @Inject constructor(
         debridFlow.value = service
     }
 
+    private val customM3uUrlFlow = MutableStateFlow(
+        prefs.getString(KEY_CUSTOM_M3U_URL, null)?.trim()?.takeIf { it.isNotEmpty() },
+    )
+    override val customM3uUrl: Flow<String?> = customM3uUrlFlow
+
+    override suspend fun setCustomM3uUrl(url: String?) {
+        val normalized = url?.trim()?.takeIf { it.isNotEmpty() }
+        prefs.edit().apply {
+            if (normalized == null) remove(KEY_CUSTOM_M3U_URL) else putString(KEY_CUSTOM_M3U_URL, normalized)
+        }.apply()
+        customM3uUrlFlow.value = normalized
+    }
+
     override val language: AppLanguage get() = Lang.current
 
     override suspend fun setLanguage(language: AppLanguage) {
@@ -268,6 +281,7 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_EXCLUDED_HDR_TYPES = "source_excluded_hdr_types"
         const val KEY_EXCLUDED_AUDIO_CODECS = "source_excluded_audio_codecs"
         const val KEY_MAX_SOURCE_SIZE_BYTES = "source_max_size_bytes"
+        const val KEY_CUSTOM_M3U_URL = "custom_m3u_url"
         const val MIN_BUFFER = 20
         const val MAX_BUFFER = 100
     }

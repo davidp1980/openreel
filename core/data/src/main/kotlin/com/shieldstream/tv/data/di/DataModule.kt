@@ -43,12 +43,12 @@ import com.shieldstream.tv.data.repository.IthilAccessRepositoryImpl
 import com.shieldstream.tv.domain.IthilAccessRepository
 import com.shieldstream.tv.data.repository.CalendarRepositoryImpl
 import com.shieldstream.tv.domain.CalendarRepository
+import com.shieldstream.tv.data.rtve.M3uHttpClient
+import com.shieldstream.tv.data.rtve.M3uTextClient
 import com.shieldstream.tv.data.rtve.RtveDrmTokenClient
 import com.shieldstream.tv.data.rtve.RtveHttpClient
 import com.shieldstream.tv.data.rtve.RtveLiveRepositoryImpl
 import com.shieldstream.tv.data.rtve.RtveTextClient
-import com.shieldstream.tv.data.rtve.TdtHttpClient
-import com.shieldstream.tv.data.rtve.TdtTextClient
 import com.shieldstream.tv.domain.LiveDrmLicenseProvider
 import com.shieldstream.tv.domain.LiveTvRepository
 import dagger.Binds
@@ -155,7 +155,7 @@ abstract class DataModule {
 
     @Binds
     @Singleton
-    abstract fun bindTdtTextClient(impl: TdtHttpClient): TdtTextClient
+    abstract fun bindM3uTextClient(impl: M3uHttpClient): M3uTextClient
 
     @Binds
     @Singleton
