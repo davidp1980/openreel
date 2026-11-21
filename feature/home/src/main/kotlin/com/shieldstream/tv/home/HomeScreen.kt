@@ -560,13 +560,7 @@ private fun CatalogFeed(
                 }
                 .focusGroup()
                 .then(
-                    when {
-                        onBack != null -> Modifier.onBackKey(enabled = true) { onBack() }
-                        hasBillboard -> Modifier.onBackKey(enabled = activeZone == HomeFocusZone.ROWS) {
-                            navigateToBillboard()
-                        }
-                        else -> Modifier
-                    },
+                    if (onBack != null) Modifier.onBackKey(enabled = true) { onBack() } else Modifier,
                 )
                 .onPreviewKeyEvent { e ->
                     val vertical = e.key == Key.DirectionDown || e.key == Key.DirectionUp

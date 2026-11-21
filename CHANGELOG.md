@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.44] - 2026-11-21
+
+### Changed
+
+- **Back from Home rows focuses top navigation bar:** removed the `CatalogFeed` Back override so pressing Back while browsing rows bubbles up to `MainScreen`, revealing and focusing `TopNavBar` instead of jumping back to the featured hero (pressing Up from the first row still returns to the hero).
+
 ## [1.0.43] - 2026-11-21
 
 ### Changed
