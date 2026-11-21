@@ -43,7 +43,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -126,8 +125,8 @@ import kotlin.math.abs
 internal val LocalContentStart = staticCompositionLocalOf { AppSpacing.ScreenEdge }
 private val RowBackground = AppColors.Background
 private val RowHeaderHeight = 140.dp
-private val RowPivotLeading = 46.dp
-private val CategoryChipBottomInset = 16.dp
+private val RowPivotLeading = 42.dp
+private val BillboardPeekHeight = 84.dp
 
 internal enum class UpNextBadge { UP_NEXT, NEW_EPISODE, NEW_SEASON }
 
@@ -156,7 +155,6 @@ fun HomeScreen(
 ) {
     LaunchedEffect(filter) { viewModel.load(filter) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val hidden by viewModel.hiddenCategories.collectAsStateWithLifecycle()
 
     when (val s = state) {
         HomeUiState.Loading -> Column(Modifier.fillMaxSize().background(BillboardBackground)) {
@@ -188,12 +186,6 @@ fun HomeScreen(
             HomeContent(
                 rows = s.rows,
                 featured = s.featured,
-                categories = remember(filter, hidden) {
-                    when {
-                        viewModel.kidsProfile -> Category.forFilter(filter).filter { it in Category.KIDS_SAFE }
-                        else -> Category.forFilter(filter).filter { it.name !in hidden }.ifEmpty { Category.forFilter(filter) }
-                    }
-                },
                 onItemClick = { item ->
                     viewModel.cancelBackgroundPrefetch()
                     onItemClick(item)
@@ -210,7 +202,6 @@ fun HomeScreen(
                     viewModel.cancelBackgroundPrefetch()
                     onUpNextClick(item, episode)
                 },
-                onOpenCategory = onOpenCategory,
                 onRemoveContinue = viewModel::removeFromContinue,
                 onRemoveMyList = viewModel::removeFromMyList,
                 onMarkUpNextWatched = viewModel::markUpNextWatched,
@@ -225,21 +216,14 @@ fun HomeScreen(
     }
 }
 
-internal enum class HomeFocusZone { HERO, CHIPS, ROWS }
+internal enum class HomeFocusZone { HERO, ROWS }
 private data class ItemMenu(val row: CatalogRow, val virtual: Int, val item: CatalogItem)
 private data class UpNextMenu(val row: CatalogRow, val virtual: Int, val item: CatalogItem, val episode: Episode)
 private data class PendingFocus(val rowId: String, val itemKey: String?, val fallbackKey: String)
 
 internal fun initialHomeZone(
-    hasContinue: Boolean,
     hasFeatured: Boolean,
-    hasCategories: Boolean,
-): HomeFocusZone = when {
-    hasContinue -> HomeFocusZone.ROWS
-    hasFeatured -> HomeFocusZone.HERO
-    hasCategories -> HomeFocusZone.CHIPS
-    else -> HomeFocusZone.ROWS
-}
+): HomeFocusZone = if (hasFeatured) HomeFocusZone.HERO else HomeFocusZone.ROWS
 
 internal data class HomeScrollVisuals(
     val billboardAlpha: Float,
@@ -278,13 +262,8 @@ internal fun homeBringIntoViewDistance(
     size: Float,
     containerSize: Float,
     rowCardPivotPx: Float,
-    chipBottomInsetPx: Float,
 ): Float = when (zone) {
     HomeFocusZone.HERO -> offset
-    HomeFocusZone.CHIPS -> {
-        val target = (containerSize - chipBottomInsetPx - abs(size)).coerceAtLeast(0f)
-        offset - target
-    }
     HomeFocusZone.ROWS -> {
         val childSize = abs(size)
         val target = if (childSize <= containerSize && containerSize - rowCardPivotPx < childSize) {
@@ -302,7 +281,6 @@ private class FocusZoneHolder(var zone: HomeFocusZone)
 private class HomeBringIntoViewSpec(
     private val zoneHolder: FocusZoneHolder,
     private val rowCardPivotPx: Float,
-    private val chipBottomInsetPx: Float,
 ) : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
         homeBringIntoViewDistance(
@@ -311,7 +289,6 @@ private class HomeBringIntoViewSpec(
             size = size,
             containerSize = containerSize,
             rowCardPivotPx = rowCardPivotPx,
-            chipBottomInsetPx = chipBottomInsetPx,
         )
 }
 
@@ -319,12 +296,10 @@ private class HomeBringIntoViewSpec(
 private fun HomeContent(
     rows: List<CatalogRow>,
     featured: List<FeaturedItem>,
-    categories: List<Category>,
     onItemClick: (CatalogItem) -> Unit,
     onContinueClick: (CatalogItem, ContinueInfo) -> Unit,
     onNewEpisodeClick: (CatalogItem, Episode) -> Unit,
     onUpNextClick: (CatalogItem, Episode) -> Unit,
-    onOpenCategory: (Category) -> Unit,
     onRemoveContinue: (CatalogItem) -> Unit,
     onRemoveMyList: (CatalogItem) -> Unit,
     onMarkUpNextWatched: (CatalogItem, Episode) -> Unit,
@@ -338,12 +313,10 @@ private fun HomeContent(
     CatalogFeed(
         rows = rows,
         featured = featured,
-        categories = categories,
         onItemClick = onItemClick,
         onContinueClick = onContinueClick,
         onNewEpisodeClick = onNewEpisodeClick,
         onUpNextClick = onUpNextClick,
-        onOpenCategory = onOpenCategory,
         onRemoveContinue = onRemoveContinue,
         onRemoveMyList = onRemoveMyList,
         onMarkUpNextWatched = onMarkUpNextWatched,
@@ -377,12 +350,10 @@ internal fun RowsBrowser(
     CatalogFeed(
         rows = rows,
         featured = emptyList(),
-        categories = emptyList(),
         onItemClick = onItemClick,
         onContinueClick = onContinueClick,
         onNewEpisodeClick = onNewEpisodeClick,
         onUpNextClick = onUpNextClick,
-        onOpenCategory = {},
         onRemoveContinue = onRemoveContinue,
         onRemoveMyList = onRemoveMyList,
         onMarkUpNextWatched = onMarkUpNextWatched,
@@ -403,12 +374,10 @@ internal fun RowsBrowser(
 private fun CatalogFeed(
     rows: List<CatalogRow>,
     featured: List<FeaturedItem>,
-    categories: List<Category>,
     onItemClick: (CatalogItem) -> Unit,
     onContinueClick: ((CatalogItem, ContinueInfo) -> Unit)?,
     onNewEpisodeClick: ((CatalogItem, Episode) -> Unit)?,
     onUpNextClick: ((CatalogItem, Episode) -> Unit)?,
-    onOpenCategory: (Category) -> Unit,
     onRemoveContinue: (CatalogItem) -> Unit,
     onRemoveMyList: (CatalogItem) -> Unit,
     onMarkUpNextWatched: ((CatalogItem, Episode) -> Unit)?,
@@ -422,25 +391,14 @@ private fun CatalogFeed(
     onBack: (() -> Unit)?,
     header: String?,
 ) {
-    val hasBillboard = featured.isNotEmpty() || categories.isNotEmpty()
+    val hasBillboard = featured.isNotEmpty()
     var activeZone by rememberSaveable(hasBillboard) {
-        mutableStateOf(
-            if (hasBillboard) {
-                initialHomeZone(
-                    hasContinue = rows.any { it.style == RowStyle.CONTINUE },
-                    hasFeatured = featured.isNotEmpty(),
-                    hasCategories = categories.isNotEmpty(),
-                )
-            } else {
-                HomeFocusZone.ROWS
-            },
-        )
+        mutableStateOf(initialHomeZone(hasFeatured = hasBillboard))
     }
     LaunchedEffect(activeZone) {
         onTopNavVisibleChange(activeZone != HomeFocusZone.ROWS)
     }
     val focusZoneHolder = remember(hasBillboard) { FocusZoneHolder(activeZone) }
-    val billboardFocusable = hasBillboard && activeZone != HomeFocusZone.ROWS
 
     val savedFocus = rememberSaveable { mutableStateOf(defaultFocusKey(rows)) }
     fun validKey(key: String) = if (findByKey(rows, key) != null) key else defaultFocusKey(rows)
@@ -463,7 +421,6 @@ private fun CatalogFeed(
 
     val contentStart = LocalContentStart.current
     val heroRequester = remember { FocusRequester() }
-    val chipsRequester = remember { FocusRequester() }
     val restoreRequester = remember { FocusRequester() }
     // Moving between the billboard and the rows may swap focus across items that are not attached
     // at the same instant. Park focus on this holder meanwhile; otherwise it falls to the
@@ -479,15 +436,15 @@ private fun CatalogFeed(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val density = LocalDensity.current
         val viewportHeight = maxHeight
-        val viewportHeightPx = with(density) { viewportHeight.roundToPx() }
+        val billboardHeight = (viewportHeight - BillboardPeekHeight).coerceAtLeast(RowHeaderHeight)
+        val billboardHeightPx = with(density) { billboardHeight.roundToPx() }
         val rowHeaderPx = with(density) { RowHeaderHeight.roundToPx() }
         val rowCardPivotPx = with(density) { (RowHeaderHeight + RowPivotLeading).toPx() }
-        val chipBottomInsetPx = with(density) { CategoryChipBottomInset.toPx() }
         val heroInfoSlidePx = with(density) { 12.dp.toPx() }
-        val transitionDistancePx = (viewportHeightPx - rowHeaderPx).coerceAtLeast(1)
-        val rowsStartScrollOffsetPx = (viewportHeightPx - rowHeaderPx).coerceAtLeast(0)
-        val bringIntoViewSpec = remember(focusZoneHolder, rowCardPivotPx, chipBottomInsetPx) {
-            HomeBringIntoViewSpec(focusZoneHolder, rowCardPivotPx, chipBottomInsetPx)
+        val transitionDistancePx = (billboardHeightPx - rowHeaderPx).coerceAtLeast(1)
+        val rowsStartScrollOffsetPx = (billboardHeightPx - rowHeaderPx).coerceAtLeast(0)
+        val bringIntoViewSpec = remember(focusZoneHolder, rowCardPivotPx) {
+            HomeBringIntoViewSpec(focusZoneHolder, rowCardPivotPx)
         }
 
         val listState = rememberLazyListState(
@@ -498,11 +455,6 @@ private fun CatalogFeed(
                 0
             },
         )
-        val showRowsBackdrop by remember(hasBillboard, listState) {
-            derivedStateOf {
-                !hasBillboard || listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
-            }
-        }
 
         fun enterRows() {
             if (rows.isEmpty() || activeZone == HomeFocusZone.ROWS) return
@@ -511,13 +463,18 @@ private fun CatalogFeed(
             val targetKey = savedFocus.value.takeIf {
                 it.startsWith(firstRowPrefix) && findByKey(rows, it) != null
             } ?: firstKey(firstRow)
+            val requesterReady = restoreKey == targetKey
             restoreKey = targetKey
             savedFocus.value = targetKey
             hero = findByKey(rows, targetKey) ?: firstRow.items.firstOrNull()
             focusZoneHolder.zone = HomeFocusZone.ROWS
             activeZone = HomeFocusZone.ROWS
-            parkingFocus = true
             transitionJob?.cancel()
+            if (requesterReady && runCatching { restoreRequester.requestFocus() }.getOrDefault(false)) {
+                parkingFocus = false
+                return
+            }
+            parkingFocus = true
             transitionJob = scrollScope.launch {
                 runCatching { parkingRequester.requestFocus() }
                 if (hasBillboard && listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) {
@@ -532,30 +489,27 @@ private fun CatalogFeed(
             }
         }
 
-        fun navigateToBillboard(target: HomeFocusZone) {
+        fun navigateToBillboard() {
             if (!hasBillboard) return
-            val resolvedTarget = when {
-                target == HomeFocusZone.CHIPS && categories.isNotEmpty() -> HomeFocusZone.CHIPS
-                featured.isNotEmpty() -> HomeFocusZone.HERO
-                categories.isNotEmpty() -> HomeFocusZone.CHIPS
-                else -> return
-            }
-            focusZoneHolder.zone = resolvedTarget
-            activeZone = resolvedTarget
-            val targetRequester = if (resolvedTarget == HomeFocusZone.HERO) heroRequester else chipsRequester
-            parkingFocus = true
+            focusZoneHolder.zone = HomeFocusZone.HERO
+            activeZone = HomeFocusZone.HERO
             transitionJob?.cancel()
+            if (listState.firstVisibleItemIndex == 0 && runCatching { heroRequester.requestFocus() }.getOrDefault(false)) {
+                parkingFocus = false
+                return
+            }
+            parkingFocus = true
             transitionJob = scrollScope.launch {
                 runCatching { parkingRequester.requestFocus() }
                 if (listState.firstVisibleItemIndex == 0) {
-                    val focused = targetRequester.requestFocusWithRetry()
+                    val focused = heroRequester.requestFocusWithRetry()
                     if (!focused) {
                         listState.animateScrollToItem(0, 0)
-                        targetRequester.requestFocusWithRetry()
+                        heroRequester.requestFocusWithRetry()
                     }
                 } else {
                     listState.animateScrollToItem(0, 0)
-                    targetRequester.requestFocusWithRetry()
+                    heroRequester.requestFocusWithRetry()
                 }
                 parkingFocus = false
             }
@@ -570,9 +524,6 @@ private fun CatalogFeed(
                 }
                 activeZone == HomeFocusZone.HERO && featured.isNotEmpty() -> {
                     heroRequester.requestFocusWithRetry()
-                }
-                activeZone == HomeFocusZone.CHIPS && categories.isNotEmpty() -> {
-                    chipsRequester.requestFocusWithRetry()
                 }
                 else -> {
                     val focused = restoreRequester.requestFocusWithRetry()
@@ -602,7 +553,6 @@ private fun CatalogFeed(
                         if (continueMenu == null && myListMenu == null && upNextMenu == null) {
                             when (activeZone) {
                                 HomeFocusZone.HERO -> if (featured.isNotEmpty()) runCatching { heroRequester.requestFocus() }
-                                HomeFocusZone.CHIPS -> if (categories.isNotEmpty()) runCatching { chipsRequester.requestFocus() }
                                 HomeFocusZone.ROWS -> Unit
                             }
                         }
@@ -613,7 +563,7 @@ private fun CatalogFeed(
                     when {
                         onBack != null -> Modifier.onBackKey(enabled = true) { onBack() }
                         hasBillboard -> Modifier.onBackKey(enabled = activeZone == HomeFocusZone.ROWS) {
-                            navigateToBillboard(if (featured.isNotEmpty()) HomeFocusZone.HERO else HomeFocusZone.CHIPS)
+                            navigateToBillboard()
                         }
                         else -> Modifier
                     },
@@ -633,8 +583,20 @@ private fun CatalogFeed(
                     .focusProperties { canFocus = parkingFocus }
                     .focusTarget(),
             ) {
-                if (!LocalLightweightUi.current && showRowsBackdrop) {
-                    hero?.let { HeroBackdrop(it) }
+                if (!LocalLightweightUi.current) {
+                    hero?.let {
+                        HeroBackdrop(
+                            item = it,
+                            modifier = Modifier.drawWithContent {
+                                val visuals = readHomeScrollVisuals(listState, hasBillboard, transitionDistancePx)
+                                val atBillboardTop = hasBillboard &&
+                                    visuals.billboardAlpha >= 0.999f &&
+                                    listState.firstVisibleItemIndex == 0 &&
+                                    listState.firstVisibleItemScrollOffset == 0
+                                if (!atBillboardTop) drawContent()
+                            },
+                        )
+                    }
                 }
                 CompositionLocalProvider(LocalBringIntoViewSpec provides bringIntoViewSpec) {
                     LazyColumn(
@@ -660,7 +622,7 @@ private fun CatalogFeed(
                                 Box(
                                     Modifier
                                         .fillMaxWidth()
-                                        .height(viewportHeight)
+                                        .height(billboardHeight)
                                         .drawWithContent {
                                             if (readHomeScrollVisuals(listState, hasBillboard, transitionDistancePx).billboardAlpha > 0.001f) {
                                                 drawContent()
@@ -671,55 +633,35 @@ private fun CatalogFeed(
                                         }
                                         .background(AppColors.Background),
                                 ) {
-                                    if (featured.isNotEmpty()) {
-                                        FeaturedCarousel(
-                                            items = featured,
-                                            onOpen = onItemClick,
-                                            contentStart = AppSpacing.ScreenEdge,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .focusRequester(heroRequester)
-                                                .focusProperties {
-                                                    canFocus = billboardFocusable
-                                                    up = navRequester
-                                                    if (categories.isNotEmpty()) down = chipsRequester
-                                                }
-                                                .onPreviewKeyEvent { event ->
-                                                    if (
-                                                        categories.isEmpty() &&
-                                                        rows.isNotEmpty() &&
-                                                        event.type == KeyEventType.KeyDown &&
-                                                        event.key == Key.DirectionDown
-                                                    ) {
-                                                        enterRows()
-                                                        true
-                                                    } else {
-                                                        false
-                                                    }
-                                                }
-                                                .onFocusChanged {
-                                                    if (it.isFocused) {
-                                                        focusZoneHolder.zone = HomeFocusZone.HERO
-                                                        activeZone = HomeFocusZone.HERO
-                                                    }
-                                                },
-                                        )
-                                    }
-                                    CategoryChips(
-                                        categories = categories,
-                                        onOpen = onOpenCategory,
-                                        requester = chipsRequester,
-                                        upRequester = if (featured.isNotEmpty()) heroRequester else navRequester,
-                                        onFocused = {
-                                            focusZoneHolder.zone = HomeFocusZone.CHIPS
-                                            activeZone = HomeFocusZone.CHIPS
-                                        },
-                                        onDown = { enterRows() },
-                                        focusable = billboardFocusable,
+                                    FeaturedCarousel(
+                                        items = featured,
+                                        onOpen = onItemClick,
+                                        contentStart = AppSpacing.ScreenEdge,
                                         modifier = Modifier
-                                            .align(Alignment.BottomCenter)
-                                            .background(Brush.verticalGradient(0f to Color.Transparent, 1f to AppColors.Background))
-                                            .padding(bottom = 6.dp),
+                                            .fillMaxSize()
+                                            .focusRequester(heroRequester)
+                                            .focusProperties {
+                                                canFocus = hasBillboard
+                                                up = navRequester
+                                            }
+                                            .onPreviewKeyEvent { event ->
+                                                if (
+                                                    rows.isNotEmpty() &&
+                                                    event.type == KeyEventType.KeyDown &&
+                                                    event.key == Key.DirectionDown
+                                                ) {
+                                                    enterRows()
+                                                    true
+                                                } else {
+                                                    false
+                                                }
+                                            }
+                                            .onFocusChanged {
+                                                if (it.isFocused) {
+                                                    focusZoneHolder.zone = HomeFocusZone.HERO
+                                                    activeZone = HomeFocusZone.HERO
+                                                }
+                                            },
                                     )
                                 }
                             }
@@ -752,7 +694,7 @@ private fun CatalogFeed(
                                     }
                                     rowIndex == 0 && hasBillboard -> Modifier.onPreviewKeyEvent { event ->
                                         if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionUp) {
-                                            navigateToBillboard(HomeFocusZone.CHIPS)
+                                            navigateToBillboard()
                                             true
                                         } else {
                                             false
@@ -908,7 +850,7 @@ private fun CatalogRowView(
     Column(modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.Bottom,
-            modifier = Modifier.padding(start = contentStart, top = 22.dp),
+            modifier = Modifier.padding(start = contentStart, top = 18.dp),
         ) {
             Text(
                 text = row.title,
@@ -928,9 +870,9 @@ private fun CatalogRowView(
             ProvidePivotScroll(leading = contentStart + 3.dp) {
                 LazyRow(
                     state = rememberLoopingRowState(row.items.size),
-                    contentPadding = PaddingValues(horizontal = contentStart, vertical = 12.dp),
+                    contentPadding = PaddingValues(horizontal = contentStart, vertical = 10.dp),
                     // Top 10 needs at least 12 dp so the previous card ends inside the opaque part of the rail scrim.
-                    horizontalArrangement = Arrangement.spacedBy(if (row.style == RowStyle.TOP10) 12.dp else 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (row.style == RowStyle.TOP10) 12.dp else 14.dp),
                 ) {
                     loopingItems(row.items) { virtual, index, item ->
                         val itemModifier = if (keyOf(row, virtual) == focusKey) Modifier.focusRequester(restoreRequester) else Modifier
@@ -1052,17 +994,17 @@ private val HeroScrims = listOf(
 private val HeroScrimBrushes = HeroScrims.map { it.brush() }
 
 @Composable
-private fun HeroBackdrop(item: CatalogItem) {
+private fun HeroBackdrop(item: CatalogItem, modifier: Modifier = Modifier) {
     val url = item.backdropUrl ?: return
     // Softened by default so the rows, not the artwork, carry the screen. The featured carousel
     // stays sharp either way.
     if (LocalSoftBackdrops.current) {
         // The scrims are baked into the softened bitmap. As full-screen gradients they cost about
         // 22 ms of GPU time per frame on the Nokia 8010, because every row scroll redraws the screen.
-        SoftBackdropImage(url = url, modifier = Modifier.fillMaxSize(), scrims = HeroScrims)
+        SoftBackdropImage(url = url, modifier = modifier.fillMaxSize(), scrims = HeroScrims)
         return
     }
-    Box(Modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize()) {
         AsyncImage(
             // The soft path decodes at 320 px, so resolution only matters for sharp backdrops.
             model = BackdropUrls.fullScreen(url, lightweight = false, highRes = LocalHighResBackdrops.current),
@@ -1143,22 +1085,6 @@ private fun ColumnScope.BillboardSkeleton() {
             Box(Modifier.width(340.dp).height(16.dp).background(SkeletonColor, AppShapes.Badge))
             Spacer(Modifier.height(18.dp))
             Box(Modifier.width(126.dp).height(36.dp).background(SkeletonColor, AppShapes.Pill))
-        }
-    }
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = LocalContentStart.current, top = 10.dp, bottom = 16.dp)
-            .graphicsLayer { this.alpha = alpha },
-    ) {
-        repeat(8) { index ->
-            Box(
-                Modifier
-                    .width((104 + (index % 3) * 18).dp)
-                    .height(40.dp)
-                    .background(SkeletonColor, AppShapes.Pill),
-            )
         }
     }
 }

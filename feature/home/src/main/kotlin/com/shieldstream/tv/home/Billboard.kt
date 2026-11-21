@@ -43,7 +43,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -67,7 +66,9 @@ import com.shieldstream.tv.strings.localizedTitle
 import com.shieldstream.tv.model.FeaturedItem
 import com.shieldstream.tv.model.MediaType
 import com.shieldstream.tv.ui.component.AppIcons
+import com.shieldstream.tv.ui.component.BackdropScrim
 import com.shieldstream.tv.ui.component.ProvidePivotScroll
+import com.shieldstream.tv.ui.component.ScrimmedBackdropImage
 import com.shieldstream.tv.ui.component.loopingItems
 import com.shieldstream.tv.ui.component.rememberLoopingRowState
 import com.shieldstream.tv.ui.component.tvClickable
@@ -162,6 +163,11 @@ private fun CarouselArrow(text: String, modifier: Modifier) {
     }
 }
 
+private val FeaturedScrims = listOf(
+    BackdropScrim(horizontal = true, stops = listOf(0f to 0.88f, 0.5f to 0.55f, 0.8f to 0f)),
+    BackdropScrim(horizontal = false, stops = listOf(0.45f to 0f, 0.82f to 0.65f, 1f to 1f)),
+)
+
 @Composable
 private fun FeaturedSlide(featured: FeaturedItem, focused: Boolean, index: Int, count: Int, contentStart: Dp) {
     val item = featured.item
@@ -171,28 +177,19 @@ private fun FeaturedSlide(featured: FeaturedItem, focused: Boolean, index: Int, 
         highRes = LocalHighResBackdrops.current,
     )
     Box(Modifier.fillMaxSize().background(AppColors.BackgroundRaised)) {
-        AsyncImage(
-            model = backdropUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
-        Box(
-            Modifier.fillMaxSize().background(
-                Brush.horizontalGradient(
-                    0f to Color.Black.copy(alpha = 0.88f),
-                    0.5f to Color.Black.copy(alpha = 0.55f),
-                    0.8f to Color.Transparent,
-                ),
-            ),
-        )
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.85f))))
+        if (backdropUrl != null) {
+            ScrimmedBackdropImage(
+                url = backdropUrl,
+                scrims = FeaturedScrims,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
 
         Column(
             Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth(0.65f)
-                .padding(start = contentStart, bottom = 96.dp),
+                .padding(start = contentStart, bottom = 24.dp),
         ) {
             BadgeLabel(featured.badge)
             Spacer(Modifier.height(14.dp))

@@ -32,7 +32,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -41,18 +40,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import coil.compose.AsyncImage
 import com.shieldstream.tv.model.CatalogItem
 import com.shieldstream.tv.model.Lang
 import com.shieldstream.tv.strings.R
 import com.shieldstream.tv.strings.localizedPluralResource
 import com.shieldstream.tv.strings.localizedStringResource
 
-val PosterWidth: Dp = 136.dp
+val PosterWidth: Dp = 120.dp
 private val CardShape = AppShapes.Control
 private val FocusBorderColor = Color.White.copy(alpha = 0.88f)
-private val PosterCaptionHeight = 48.dp
-private val ContinueCardWidth = 240.dp
+private val PosterCaptionHeight = 44.dp
+private val ContinueCardWidth = 208.dp
 
 @Composable
 fun PosterCard(
@@ -205,10 +203,11 @@ fun ContinueCard(
     ) {
         val imageUrl = item.backdropUrl ?: item.posterUrl
         if (imageUrl != null) {
-            AsyncImage(
-                model = imageUrl,
+            CardImage(
+                url = imageUrl,
                 contentDescription = "${item.title}, $label",
-                contentScale = ContentScale.Crop,
+                width = ContinueCardWidth,
+                height = ContinueCardWidth * 9 / 16,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -338,7 +337,7 @@ fun Top10Card(
             Text(
                 text = rank.toString(),
                 color = Color.White,
-                fontSize = 48.sp,
+                fontSize = 42.sp,
                 fontWeight = FontWeight.Black,
                 style = TextStyle(
                     shadow = Shadow(

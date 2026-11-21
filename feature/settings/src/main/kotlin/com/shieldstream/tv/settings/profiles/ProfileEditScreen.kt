@@ -58,11 +58,9 @@ import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shieldstream.tv.domain.AgeRatings
 import com.shieldstream.tv.model.AppLanguage
-import com.shieldstream.tv.model.Category
 import com.shieldstream.tv.model.Lang
 import com.shieldstream.tv.model.ProfileAvatars
 import com.shieldstream.tv.model.SubtitlePreference
-import com.shieldstream.tv.settings.HomeCategoriesDialog
 import com.shieldstream.tv.ui.component.ProfileAvatar
 import com.shieldstream.tv.ui.component.TvButton
 import com.shieldstream.tv.ui.component.restartApp
@@ -95,7 +93,6 @@ fun ProfileEditScreen(
     var creatingPin by remember { mutableStateOf(false) }
     var firstPin by remember { mutableStateOf<String?>(null) }
     var pinError by remember { mutableStateOf<String?>(null) }
-    var choosingCategories by remember { mutableStateOf(false) }
 
     Box(Modifier.fillMaxSize().background(ProfileBackground)) {
         Column(
@@ -230,16 +227,6 @@ fun ProfileEditScreen(
                             onFocusLost = viewModel::cancelConfirmations,
                             modifier = lastRowDown,
                         )
-                        OptionChip(
-                            text = localizedStringResource(
-                                StringsR.string.settings_profile_categories,
-                                Category.entries.count { it.name !in profile.hiddenCategories },
-                                Category.entries.size,
-                            ),
-                            highlighted = profile.hiddenCategories.isNotEmpty(),
-                            onClick = { choosingCategories = true },
-                            modifier = lastRowDown,
-                        )
                     }
                     if (profile.kids) {
                         Spacer(Modifier.height(12.dp))
@@ -335,15 +322,6 @@ fun ProfileEditScreen(
                 firstPin = null
                 pinError = null
             },
-        )
-    }
-
-    if (choosingCategories) {
-        HomeCategoriesDialog(
-            hidden = profile.hiddenCategories,
-            onToggle = viewModel::toggleCategory,
-            onShowAll = viewModel::showAllCategories,
-            onClose = { choosingCategories = false },
         )
     }
 }

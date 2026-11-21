@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.43] - 2026-11-21
+
+### Changed
+
+- **Land on the main featured hero on startup:** `initialHomeZone` now opens on the featured hero billboard when featured content is available instead of jumping straight into Continue Watching.
+- **Fluid entrance scroll into Home sections:** sized the billboard to leave the first catalog row peeking at the bottom (`84.dp`), baked the featured slide scrims into the backdrop bitmap via `ScrimmedBackdropImage`, kept `HeroBackdrop` precomposed behind the billboard, and enabled synchronous focus transfer between the hero and row 0.
+- **More compact row cards with `CardImage`:** reduced `PosterWidth` from `136.dp` to `120.dp` (and `PosterCaptionHeight` to `44.dp`), reduced `ContinueCardWidth` and `UpNextCardWidth` from `240.dp` to `208.dp`, and switched `ContinueCard` and `UpNextCard` from `AsyncImage` to `CardImage`.
+
+### Removed
+
+- **Home category chips:** removed the category chip bar from the Home billboard (and its profile toggle in `ProfileEditScreen`) so navigation moves directly from the hero into the catalog sections.
+
 ## [1.0.42] - 2026-11-21
 
 ### Changed

@@ -27,17 +27,15 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import coil.compose.AsyncImage
 import com.shieldstream.tv.model.CatalogItem
 import com.shieldstream.tv.model.Episode
 
 private val UpNextCardShape = AppShapes.Control
-private val UpNextCardWidth = 240.dp
+private val UpNextCardWidth = 208.dp
 
 fun upNextImageUrl(item: CatalogItem, episode: Episode): String? =
     episode.stillUrl ?: item.backdropUrl ?: item.posterUrl
@@ -78,10 +76,11 @@ fun UpNextCard(
     ) {
         val imageUrl = upNextImageUrl(item, episode)
         if (imageUrl != null) {
-            AsyncImage(
-                model = imageUrl,
+            CardImage(
+                url = imageUrl,
                 contentDescription = "${item.title}, $label",
-                contentScale = ContentScale.Crop,
+                width = UpNextCardWidth,
+                height = UpNextCardWidth * 9 / 16,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
@@ -96,7 +95,7 @@ fun UpNextCard(
             Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(96.dp)
+                .height(84.dp)
                 .background(
                     Brush.verticalGradient(
                         0f to Color.Transparent,
