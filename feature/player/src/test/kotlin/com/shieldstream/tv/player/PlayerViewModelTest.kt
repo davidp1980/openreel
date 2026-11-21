@@ -19,6 +19,7 @@ import com.shieldstream.tv.domain.NextEpisode
 import com.shieldstream.tv.domain.SettingsRepository
 import com.shieldstream.tv.domain.SkipSegmentsRepository
 import com.shieldstream.tv.domain.SubtitleRepository
+import com.shieldstream.tv.domain.TrackMemoryRepository
 import com.shieldstream.tv.domain.TraktRepository
 import com.shieldstream.tv.domain.WatchProgressRepository
 import com.shieldstream.tv.media.Media3Factory
@@ -35,6 +36,7 @@ import com.shieldstream.tv.model.StreamSource
 import com.shieldstream.tv.model.SubtitleAppearance
 import com.shieldstream.tv.model.SubtitleColor
 import com.shieldstream.tv.model.SubtitlePreference
+import com.shieldstream.tv.model.VideoFit
 import com.shieldstream.tv.strings.Texts
 import io.mockk.coVerify
 import io.mockk.every
@@ -43,6 +45,7 @@ import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -221,12 +224,82 @@ class PlayerViewModelTest {
         coVerify(exactly = 1) { fixture.settings.setSubtitleAppearance(expected) }
     }
 
+    @Test
+    fun `cycleVideoFit advances through fit zoom stretch and persists`() = runBlocking {
+        val fitFlow = MutableStateFlow(VideoFit.FIT)
+        val fixture = fixture(
+            FakePlayers(Tracks.EMPTY),
+            flowOf(40),
+            SubtitlePreference.OFF,
+            videoFitFlow = fitFlow,
+        )
+
+        assertEquals(VideoFit.FIT, fixture.viewModel.videoFit.value)
+        fixture.viewModel.cycleVideoFit()
+        yield()
+        coVerify { fixture.settings.setVideoFit(VideoFit.ZOOM) }
+    }
+
+    @Test
+    fun `manual pick failure reports error and emits backToSources instead of Error state`() = runBlocking {
+        val fixture = fixture(
+            FakePlayers(Tracks.EMPTY),
+            flowOf(40),
+            SubtitlePreference.OFF,
+            manualPick = true,
+            resolveState = ResolveState.Failed("Stream broken"),
+        )
+
+        fixture.viewModel.start()
+        yield()
+
+        assertEquals("Stream broken", fixture.holder.consumePickedSourceFailure())
+        fixture.viewModel.backToSources.first()
+        assertEquals(true, fixture.viewModel.uiState.value !is PlayerUiState.Error)
+    }
+
+    @Test
+    fun `remembered audio language is saved and applied on ready`() = runBlocking {
+        val trackMemory = mockk<TrackMemoryRepository>(relaxed = true)
+        every { trackMemory.audio("tt1") } returns "en"
+        val enFormat = Format.Builder().setId("a-en").setLanguage("en").setSampleMimeType(MimeTypes.AUDIO_AAC).build()
+        val esFormat = Format.Builder().setId("a-es").setLanguage("es").setSampleMimeType(MimeTypes.AUDIO_AAC).build()
+        val audioGroup = Tracks.Group(
+            TrackGroup("audio", esFormat, enFormat),
+            false,
+            intArrayOf(C.FORMAT_HANDLED, C.FORMAT_HANDLED),
+            booleanArrayOf(true, false),
+        )
+        val players = FakePlayers(Tracks(listOf(audioGroup)))
+        val fixture = fixture(players, flowOf(40), SubtitlePreference.OFF, trackMemory = trackMemory)
+
+        fixture.viewModel.rememberAudioLanguage("es")
+        fixture.viewModel.rememberSubtitleLanguage("en")
+        fixture.viewModel.rememberSubtitlesOff()
+        verify { trackMemory.saveAudio("tt1", "es") }
+        verify { trackMemory.saveSubtitle("tt1", "en") }
+        verify { trackMemory.saveSubtitlesOff("tt1") }
+
+        fixture.viewModel.start()
+        yield()
+        players.listener(0).onPlaybackStateChanged(Player.STATE_READY)
+
+        val override = players.player(0).trackSelectionParameters.overrides[audioGroup.mediaTrackGroup]
+        assertEquals(listOf(1), override?.trackIndices)
+        fixture.viewModel.onStop()
+        fixture.viewModel.viewModelScope.cancel()
+    }
+
     private fun fixture(
         players: FakePlayers,
         bufferSecondsFlow: Flow<Int>,
         subtitlePreference: SubtitlePreference,
         nextEpisode: NextEpisode? = null,
         autoNext: Boolean = true,
+        manualPick: Boolean = false,
+        resolveState: ResolveState = ResolveState.Ready("https://example.test/video"),
+        videoFitFlow: Flow<VideoFit> = flowOf(VideoFit.FIT),
+        trackMemory: TrackMemoryRepository = mockk(relaxed = true),
     ): Fixture {
         val policy = PlaybackPolicy.automatic(512L * 1024 * 1024)
         val media3Factory = mockk<Media3Factory>()
@@ -237,15 +310,14 @@ class PlayerViewModelTest {
             every { resolve(any(), any(), any()) } returns policy
         }
         val resolve = mockk<ResolveStreamUseCase>()
-        every { resolve.invoke(any<StreamSource>()) } returns flowOf<ResolveState>(
-            ResolveState.Ready("https://example.test/video"),
-        )
+        every { resolve.invoke(any<StreamSource>()) } returns flowOf(resolveState)
         val settings = mockk<SettingsRepository>(relaxed = true) {
             every { deviceOptimization } returns flowOf(DeviceOptimization.CUSTOM)
             every { this@mockk.maxBufferSeconds } returns bufferSecondsFlow
             every { seekThumbnails } returns flowOf(false)
             every { autoNextEpisode } returns flowOf(autoNext)
             every { dialogueBoost } returns flowOf(false)
+            every { videoFit } returns videoFitFlow
         }
         val profile = Profile(
             id = "test",
@@ -278,6 +350,7 @@ class PlayerViewModelTest {
                 progressKey = "movie:1",
                 media = PlaybackMedia(MediaType.MOVIE, "tt1", "Movie", "Movie", 2020),
                 next = nextEpisode,
+                manualPick = manualPick,
             )
         }
         val watchProgress = mockk<WatchProgressRepository>(relaxed = true)
@@ -297,6 +370,7 @@ class PlayerViewModelTest {
                 trakt = mockk<TraktRepository>(relaxed = true),
                 skipSegmentsRepository = mockk<SkipSegmentsRepository>(relaxed = true),
                 liveDrmProvider = LiveDrmLicenseProvider { null },
+                trackMemory = trackMemory,
                 texts = mockk<Texts>(relaxed = true),
                 catalogCache = mockk<CatalogCacheRefresher>(relaxed = true),
             ),

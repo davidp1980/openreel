@@ -8,6 +8,7 @@ import com.shieldstream.tv.strings.Texts
 import com.shieldstream.tv.strings.rememberTexts
 import com.shieldstream.tv.model.Lang
 import com.shieldstream.tv.model.SubtitleAppearance
+import com.shieldstream.tv.model.VideoFit
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -89,6 +90,11 @@ fun TracksPanel(
     onOpenSync: () -> Unit = {},
     allowExternalSubtitles: Boolean = true,
     isLive: Boolean = false,
+    videoFit: VideoFit = VideoFit.FIT,
+    onCycleVideoFit: () -> Unit = {},
+    onAudioSelected: (String?) -> Unit = {},
+    onSubtitleSelected: (String?) -> Unit = {},
+    onSubtitlesOff: () -> Unit = {},
 ) {
     val texts = rememberTexts()
     var tracks by remember(player) { mutableStateOf(player.currentTracks) }
@@ -108,7 +114,7 @@ fun TracksPanel(
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.85f))
+            .background(if (showAppearance) Color.Transparent else Color.Black.copy(alpha = 0.85f))
             .onBackKey(enabled = showExternal || showAppearance) {
                 if (showExternal) {
                     showExternal = false
@@ -124,7 +130,8 @@ fun TracksPanel(
                 onSearch = onSearchExternal,
                 onPick = onPickExternal,
             )
-            showAppearance -> SubtitleAppearanceView(
+            showAppearance -> LiveSubtitleEditor(
+                player = player,
                 appearance = appearance,
                 onChange = onAppearanceChange,
             )
@@ -132,7 +139,7 @@ fun TracksPanel(
             val hasSpanish = remember(tracks) { hasEmbeddedSubtitle(tracks, Lang.current.code) }
             val externalSubtitleText = texts.get(StringsR.string.player_external_subtitle)
             val syncSubtitlesText = texts.get(StringsR.string.player_sync_subtitles_3af0a4)
-            val audio = remember(tracks) { audioOptions(tracks, player, texts) }
+            val audio = remember(tracks) { audioOptions(tracks, player, texts, onAudioSelected) }
             val text = remember(tracks, hasSpanish, externalLabel, syncDetail, appearance, allowExternalSubtitles) {
                 buildList {
                     if (allowExternalSubtitles) {
@@ -149,6 +156,8 @@ fun TracksPanel(
                             externalActive = externalLabel != null,
                             onExternalOff = onExternalOff,
                             onManualSelection = onManualSubtitleSelection,
+                            onSubtitleSelected = onSubtitleSelected,
+                            onSubtitlesOff = onSubtitlesOff,
                             texts = texts,
                         ),
                     )
@@ -164,24 +173,49 @@ fun TracksPanel(
                     )
                 }
             }
-            TracksView(audio = audio, text = text)
+            val playback = remember(videoFit, isLive) {
+                if (isLive) {
+                    emptyList()
+                } else {
+                    listOf(
+                        TrackOption(
+                            key = "p_fit",
+                            title = texts.get(StringsR.string.player_video_fit),
+                            detail = when (videoFit) {
+                                VideoFit.FIT -> texts.get(StringsR.string.player_video_fit_original)
+                                VideoFit.ZOOM -> texts.get(StringsR.string.player_video_fit_zoom)
+                                VideoFit.STRETCH -> texts.get(StringsR.string.player_video_fit_stretch)
+                            },
+                            selected = videoFit != VideoFit.FIT,
+                            onSelect = onCycleVideoFit,
+                        ),
+                    )
+                }
+            }
+            TracksView(audio = audio, text = text, playback = playback)
             }
         }
-        Text(
-            text = when {
-                showExternal || showAppearance -> localizedStringResource(StringsR.string.player_back_to_return_to_audio_subtitles)
-                isLive -> localizedStringResource(StringsR.string.player_back_to_return_to_live)
-                else -> localizedStringResource(StringsR.string.player_back_to_return_to_the_movie)
-            },
-            color = Color.White.copy(alpha = 0.5f),
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
-        )
+        if (!showAppearance) {
+            Text(
+                text = when {
+                    showExternal -> localizedStringResource(StringsR.string.player_back_to_return_to_audio_subtitles)
+                    isLive -> localizedStringResource(StringsR.string.player_back_to_return_to_live)
+                    else -> localizedStringResource(StringsR.string.player_back_to_return_to_the_movie)
+                },
+                color = Color.White.copy(alpha = 0.5f),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp),
+            )
+        }
     }
 }
 
 @Composable
-private fun TracksView(audio: List<TrackOption>, text: List<TrackOption>) {
+private fun TracksView(
+    audio: List<TrackOption>,
+    text: List<TrackOption>,
+    playback: List<TrackOption>,
+) {
     val initialFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) {
         withFrameNanos { }
@@ -193,7 +227,7 @@ private fun TracksView(audio: List<TrackOption>, text: List<TrackOption>) {
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 96.dp, vertical = 48.dp),
-        horizontalArrangement = Arrangement.spacedBy(64.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (playback.isEmpty()) 64.dp else 44.dp),
     ) {
         OptionColumn(
             title = "Audio",
@@ -213,6 +247,17 @@ private fun TracksView(audio: List<TrackOption>, text: List<TrackOption>) {
             focusRequester = null,
             modifier = Modifier.weight(1f),
         )
+        if (playback.isNotEmpty()) {
+            OptionColumn(
+                title = localizedStringResource(StringsR.string.settings_playback),
+                options = playback,
+                emptyText = "",
+                onClick = { it.onSelect() },
+                focusIndex = -1,
+                focusRequester = null,
+                modifier = Modifier.weight(0.8f),
+            )
+        }
     }
 }
 
@@ -371,103 +416,6 @@ private fun OptionColumn(
 }
 
 @Composable
-private fun SubtitleAppearanceView(
-    appearance: SubtitleAppearance,
-    onChange: (SubtitleAppearance) -> Unit,
-) {
-    val initialFocus = remember { FocusRequester() }
-    LaunchedEffect(Unit) {
-        withFrameNanos { }
-        runCatching { initialFocus.requestFocus() }
-    }
-    Box(
-        modifier = Modifier.fillMaxSize().padding(48.dp),
-        contentAlignment = Alignment.TopCenter,
-    ) {
-        Column(Modifier.width(720.dp)) {
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text = localizedStringResource(StringsR.string.subtitle_appearance),
-            color = Color.White,
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-        )
-        Spacer(Modifier.height(4.dp))
-        AppearanceControlRow(
-            title = localizedStringResource(StringsR.string.subtitle_size),
-            value = localizedStringResource(StringsR.string.subtitle_size_value, appearance.sizePercent),
-            modifier = Modifier.focusRequester(initialFocus),
-            onShift = { delta ->
-                onChange(
-                    appearance.copy(
-                        sizePercent = (appearance.sizePercent + delta * SubtitleAppearance.SIZE_STEP)
-                            .coerceIn(SubtitleAppearance.MIN_SIZE, SubtitleAppearance.MAX_SIZE),
-                    ),
-                )
-            },
-        )
-        AppearanceControlRow(
-            title = localizedStringResource(StringsR.string.subtitle_position),
-            value = localizedStringResource(StringsR.string.subtitle_position_value, appearance.verticalPositionPercent),
-            onShift = { delta ->
-                onChange(
-                    appearance.copy(
-                        verticalPositionPercent = (
-                            appearance.verticalPositionPercent + delta * SubtitleAppearance.POSITION_STEP
-                        ).coerceIn(SubtitleAppearance.MIN_POSITION, SubtitleAppearance.MAX_POSITION),
-                    ),
-                )
-            },
-        )
-        }
-    }
-}
-
-@Composable
-private fun AppearanceControlRow(
-    title: String,
-    value: String,
-    modifier: Modifier = Modifier,
-    onShift: (Int) -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val foreground = if (focused) Color.Black else Color.White
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
-            .onPreviewKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                when (event.key) {
-                    Key.DirectionLeft -> { onShift(-1); true }
-                    Key.DirectionRight -> { onShift(1); true }
-                    else -> false
-                }
-            }
-            .clip(AppShapes.Control)
-            .background(if (focused) Color.White else Color.Transparent)
-            .tvClickable(onClick = { onShift(1) })
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-    ) {
-        Text(
-            text = title,
-            color = foreground,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f),
-        )
-        Text(text = "‹", color = foreground.copy(alpha = 0.65f), style = MaterialTheme.typography.titleMedium)
-        Text(
-            text = value,
-            color = foreground,
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            maxLines = 1,
-            modifier = Modifier.padding(horizontal = 8.dp),
-        )
-        Text(text = "›", color = foreground.copy(alpha = 0.65f), style = MaterialTheme.typography.titleMedium)
-    }
-}
-
-@Composable
 private fun OptionRow(option: TrackOption, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
     val fg = if (focused) Color.Black else Color.White
@@ -533,7 +481,12 @@ private fun hasEmbeddedSubtitle(tracks: Tracks, language: String): Boolean =
     }
 
 @OptIn(UnstableApi::class)
-private fun audioOptions(tracks: Tracks, player: Player, texts: Texts): List<TrackOption> = buildList {
+private fun audioOptions(
+    tracks: Tracks,
+    player: Player,
+    texts: Texts,
+    onAudioSelected: (String?) -> Unit,
+): List<TrackOption> = buildList {
     tracks.groups.forEachIndexed { groupIndex, group ->
         if (group.type != C.TRACK_TYPE_AUDIO) return@forEachIndexed
         for (i in 0 until group.length) {
@@ -550,6 +503,7 @@ private fun audioOptions(tracks: Tracks, player: Player, texts: Texts): List<Tra
                     ).distinct().joinToString(" · "),
                     selected = group.isTrackSelected(i),
                     onSelect = {
+                        onAudioSelected(f.language)
                         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
                             .build()
@@ -567,6 +521,8 @@ private fun textOptions(
     externalActive: Boolean,
     onExternalOff: () -> Unit,
     onManualSelection: () -> Unit,
+    onSubtitleSelected: (String?) -> Unit,
+    onSubtitlesOff: () -> Unit,
     texts: Texts,
 ): List<TrackOption> {
     val textGroups = tracks.groups.withIndex().filter { it.value.type == C.TRACK_TYPE_TEXT }
@@ -581,6 +537,7 @@ private fun textOptions(
                 selected = !anySelected,
                 onSelect = {
                     onManualSelection()
+                    onSubtitlesOff()
                     onExternalOff()
                     player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                         .clearOverridesOfType(C.TRACK_TYPE_TEXT)
@@ -609,6 +566,7 @@ private fun textOptions(
                         selected = !externalActive && group.isTrackSelected(i),
                         onSelect = {
                             onManualSelection()
+                            onSubtitleSelected(f.language)
                             onExternalOff()
                             player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)

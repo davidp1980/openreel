@@ -515,6 +515,7 @@ class PlayerViewModelLiveTest {
             trakt = trakt,
             skipSegmentsRepository = skipSegments,
             liveDrmProvider = licenseProvider,
+            trackMemory = mockk(relaxed = true),
             texts = mockk<Texts>(relaxed = true),
             catalogCache = mockk<CatalogCacheRefresher>(relaxed = true),
         ).apply {

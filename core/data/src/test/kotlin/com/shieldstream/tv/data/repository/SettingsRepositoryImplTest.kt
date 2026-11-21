@@ -12,6 +12,7 @@ import com.shieldstream.tv.model.Profile
 import com.shieldstream.tv.model.Quality
 import com.shieldstream.tv.model.SourceExclusions
 import com.shieldstream.tv.model.SourceSizeLimits
+import com.shieldstream.tv.model.VideoFit
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -96,6 +97,19 @@ class SettingsRepositoryImplTest {
 
         assertEquals(true, repository().highResBackdrops.first())
         assertEquals(true, repository().highResBackdropsEnabled)
+    }
+
+    @Test
+    fun `video fit and switch from picked source persist across reloads`() = runTest {
+        assertEquals(VideoFit.FIT, repository().videoFit.first())
+        assertEquals(true, repository().switchFromPickedSource.first())
+
+        val settings = repository()
+        settings.setVideoFit(VideoFit.ZOOM)
+        settings.setSwitchFromPickedSource(false)
+
+        assertEquals(VideoFit.ZOOM, repository().videoFit.first())
+        assertEquals(false, repository().switchFromPickedSource.first())
     }
 
     private fun repository(): SettingsRepositoryImpl {

@@ -63,8 +63,8 @@ class HomeViewModelsTest {
         val show = item("show", MediaType.TV, "Show")
         val broken = item("broken", MediaType.MOVIE, "Broken")
         val catalog = mockk<CatalogRepository>()
-        coEvery { catalog.getHome(HomeFilter.ALL) } returns listOf(CatalogRow("base", "Base", listOf(show)))
-        coEvery { catalog.getHome(not(HomeFilter.ALL)) } returns emptyList()
+        coEvery { catalog.getHome(HomeFilter.ALL, any()) } returns listOf(CatalogRow("base", "Base", listOf(show)))
+        coEvery { catalog.getHome(not(HomeFilter.ALL), any()) } returns emptyList()
         coEvery { catalog.getFeatured(any()) } returns emptyList()
         coEvery { catalog.getItem(MediaType.TV, "show") } returns show
         coEvery { catalog.getItem(MediaType.MOVIE, "broken") } throws IOException("offline")
@@ -99,7 +99,7 @@ class HomeViewModelsTest {
     fun `home row limit updates catalog rows without limiting continue watching`() = runTest {
         val items = (1..20).map { item(it.toString(), MediaType.MOVIE, "Movie $it") }
         val catalog = mockk<CatalogRepository> {
-            coEvery { getHome(any()) } returns listOf(CatalogRow("base", "Base", items))
+            coEvery { getHome(any(), any()) } returns listOf(CatalogRow("base", "Base", items))
             coEvery { getFeatured(any()) } returns emptyList()
             items.forEach { item -> coEvery { getItem(item.type, item.id) } returns item }
         }
@@ -124,6 +124,8 @@ class HomeViewModelsTest {
         advanceUntilIdle()
         assertEquals((1..15).map { it.toString() }, viewModel.baseRowItems())
         assertEquals(20, viewModel.continueRowSize())
+        coVerify { catalog.getHome(HomeFilter.ALL, 10) }
+        coVerify { catalog.getHome(HomeFilter.ALL, 15) }
     }
 
     @Test
@@ -131,15 +133,15 @@ class HomeViewModelsTest {
         val movie = item("movie", MediaType.MOVIE, "Movie")
         val show = item("show", MediaType.TV, "Show")
         val catalog = mockk<CatalogRepository>()
-        coEvery { catalog.getHome(HomeFilter.ALL) } returns listOf(CatalogRow("base", "Base", listOf(movie)))
-        coEvery { catalog.getHome(not(HomeFilter.ALL)) } returns emptyList()
+        coEvery { catalog.getHome(HomeFilter.ALL, any()) } returns listOf(CatalogRow("base", "Base", listOf(movie)))
+        coEvery { catalog.getHome(not(HomeFilter.ALL), any()) } returns emptyList()
         coEvery { catalog.getFeatured(any()) } returns emptyList()
         coEvery { catalog.getItem(MediaType.MOVIE, "movie") } returns movie
         coEvery { catalog.getItem(MediaType.MOVIE, "broken") } throws IOException("offline")
         coEvery { catalog.getItem(MediaType.TV, "show") } returns show
         val trakt = mockk<TraktRepository>()
-        coEvery { trakt.recommendations("main", MediaType.MOVIE) } returns listOf("movie", "broken")
-        coEvery { trakt.recommendations("main", MediaType.TV) } returns listOf("show")
+        coEvery { trakt.recommendations("main", MediaType.MOVIE, any()) } returns listOf("movie", "broken")
+        coEvery { trakt.recommendations("main", MediaType.TV, any()) } returns listOf("show")
         val viewModel = HomeViewModel(
             catalogRepository = catalog,
             watchProgress = mockk { every { progress } returns MutableStateFlow(emptyMap()) },
@@ -168,7 +170,7 @@ class HomeViewModelsTest {
         val movie = item("movie", MediaType.MOVIE, "Movie")
         val pending = CompletableDeferred<List<String>>()
         val trakt = mockk<TraktRepository>()
-        coEvery { trakt.recommendations("main", MediaType.MOVIE) } coAnswers { pending.await() }
+        coEvery { trakt.recommendations("main", MediaType.MOVIE, any()) } coAnswers { pending.await() }
         val viewModel = homeViewModel(catalog(movie), trakt, profileFlow())
 
         viewModel.load(HomeFilter.MOVIES)
@@ -188,22 +190,22 @@ class HomeViewModelsTest {
         val movie = item("movie", MediaType.MOVIE, "Movie")
         val show = item("show", MediaType.TV, "Show")
         val trakt = mockk<TraktRepository>()
-        coEvery { trakt.recommendations("main", MediaType.MOVIE) } returns listOf("movie")
-        coEvery { trakt.recommendations("main", MediaType.TV) } returns listOf("show")
+        coEvery { trakt.recommendations("main", MediaType.MOVIE, any()) } returns listOf("movie")
+        coEvery { trakt.recommendations("main", MediaType.TV, any()) } returns listOf("show")
         val viewModel = homeViewModel(catalog(movie, show), trakt, profileFlow())
 
         viewModel.load(HomeFilter.MOVIES)
         advanceUntilIdle()
 
         assertEquals(listOf("movie"), viewModel.recommendedRow()?.items?.map { it.id })
-        coVerify(exactly = 0) { trakt.recommendations("main", MediaType.TV) }
+        coVerify(exactly = 0) { trakt.recommendations("main", MediaType.TV, any()) }
 
         viewModel.load(HomeFilter.TV)
         advanceUntilIdle()
 
         assertEquals(listOf("show"), viewModel.recommendedRow()?.items?.map { it.id })
-        coVerify(exactly = 1) { trakt.recommendations("main", MediaType.MOVIE) }
-        coVerify(exactly = 1) { trakt.recommendations("main", MediaType.TV) }
+        coVerify(exactly = 1) { trakt.recommendations("main", MediaType.MOVIE, any()) }
+        coVerify(exactly = 1) { trakt.recommendations("main", MediaType.TV, any()) }
     }
 
     @Test
@@ -212,8 +214,8 @@ class HomeViewModelsTest {
         val catalog = catalog(movie)
         coEvery { catalog.getItem(MediaType.TV, "broken") } throws IOException("offline")
         val trakt = mockk<TraktRepository>()
-        coEvery { trakt.recommendations("main", MediaType.MOVIE) } returns emptyList()
-        coEvery { trakt.recommendations("main", MediaType.TV) } returns listOf("broken")
+        coEvery { trakt.recommendations("main", MediaType.MOVIE, any()) } returns emptyList()
+        coEvery { trakt.recommendations("main", MediaType.TV, any()) } returns listOf("broken")
         val viewModel = homeViewModel(catalog, trakt, profileFlow())
 
         viewModel.load(HomeFilter.MOVIES)
@@ -231,13 +233,13 @@ class HomeViewModelsTest {
         val movie = item("movie", MediaType.MOVIE, "Movie")
         val active = profileFlow(traktUser = null)
         val trakt = mockk<TraktRepository>()
-        coEvery { trakt.recommendations("main", MediaType.MOVIE) } returns listOf("movie")
+        coEvery { trakt.recommendations("main", MediaType.MOVIE, any()) } returns listOf("movie")
         val viewModel = homeViewModel(catalog(movie), trakt, active)
 
         viewModel.load(HomeFilter.MOVIES)
         advanceUntilIdle()
         assertEquals(null, viewModel.recommendedRow())
-        coVerify(exactly = 0) { trakt.recommendations(any(), any()) }
+        coVerify(exactly = 0) { trakt.recommendations(any(), any(), any()) }
 
         active.value = active.value.copy(traktUser = "viewer")
         advanceUntilIdle()
@@ -250,7 +252,7 @@ class HomeViewModelsTest {
         active.value = active.value.copy(traktUser = "viewer", kids = true)
         advanceUntilIdle()
         assertEquals(null, viewModel.recommendedRow())
-        coVerify(exactly = 1) { trakt.recommendations("main", MediaType.MOVIE) }
+        coVerify(exactly = 1) { trakt.recommendations("main", MediaType.MOVIE, any()) }
     }
 
     @Test
@@ -262,11 +264,11 @@ class HomeViewModelsTest {
         val secondPending = CompletableDeferred<List<String>>()
         var firstCalls = 0
         val trakt = mockk<TraktRepository>()
-        coEvery { trakt.recommendations("first", MediaType.MOVIE) } coAnswers {
+        coEvery { trakt.recommendations("first", MediaType.MOVIE, any()) } coAnswers {
             firstCalls += 1
             if (firstCalls == 1) listOf("first") else listOf("first-updated")
         }
-        coEvery { trakt.recommendations("second", MediaType.MOVIE) } coAnswers {
+        coEvery { trakt.recommendations("second", MediaType.MOVIE, any()) } coAnswers {
             withContext(NonCancellable) { secondPending.await() }
         }
         val viewModel = homeViewModel(catalog(first, firstUpdated, second), trakt, active)
@@ -287,8 +289,8 @@ class HomeViewModelsTest {
         runCurrent()
 
         assertEquals(listOf("first-updated"), viewModel.recommendedRow()?.items?.map { it.id })
-        coVerify(exactly = 1) { trakt.recommendations("second", MediaType.MOVIE) }
-        coVerify(exactly = 2) { trakt.recommendations("first", MediaType.MOVIE) }
+        coVerify(exactly = 1) { trakt.recommendations("second", MediaType.MOVIE, any()) }
+        coVerify(exactly = 2) { trakt.recommendations("first", MediaType.MOVIE, any()) }
     }
 
     @Test
@@ -556,7 +558,7 @@ class HomeViewModelsTest {
         val entries = (1..20).map { MyListEntry(MediaType.MOVIE, it.toString(), addedAt = (100 - it).toLong()) }
         val allowRemaining = CompletableDeferred<Unit>()
         val catalog = mockk<CatalogRepository>()
-        coEvery { catalog.getHome(any()) } returns listOf(CatalogRow("base", "Base", listOf(item("base", MediaType.MOVIE, "Base"))))
+        coEvery { catalog.getHome(any(), any()) } returns listOf(CatalogRow("base", "Base", listOf(item("base", MediaType.MOVIE, "Base"))))
         coEvery { catalog.getFeatured(any()) } returns emptyList()
         coEvery { catalog.getItem(MediaType.MOVIE, any()) } coAnswers {
             val id = secondArg<String>()
@@ -834,7 +836,7 @@ class HomeViewModelsTest {
         val catalog = catalog(movie)
         val tvPrefetchStarted = CompletableDeferred<Unit>()
         val tvPrefetch = CompletableDeferred<List<CatalogRow>>()
-        coEvery { catalog.getHome(HomeFilter.TV) } coAnswers {
+        coEvery { catalog.getHome(HomeFilter.TV, any()) } coAnswers {
             tvPrefetchStarted.complete(Unit)
             tvPrefetch.await()
         }
@@ -851,7 +853,7 @@ class HomeViewModelsTest {
         viewModel.cancelBackgroundPrefetch()
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { catalog.getHome(HomeFilter.MOVIES) }
+        coVerify(exactly = 0) { catalog.getHome(HomeFilter.MOVIES, any()) }
     }
 
     @Test
@@ -942,7 +944,7 @@ class HomeViewModelsTest {
 
     private fun catalog(base: CatalogItem, vararg hydrated: CatalogItem): CatalogRepository {
         val catalog = mockk<CatalogRepository>()
-        coEvery { catalog.getHome(any()) } returns listOf(CatalogRow("base", "Base", listOf(base)))
+        coEvery { catalog.getHome(any(), any()) } returns listOf(CatalogRow("base", "Base", listOf(base)))
         coEvery { catalog.getFeatured(any()) } returns emptyList()
         (listOf(base) + hydrated).forEach { item ->
             coEvery { catalog.getItem(item.type, item.id) } returns item

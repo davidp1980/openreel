@@ -522,6 +522,7 @@ private fun SettingsList(
                 )
             }
             item { AutoNextCard() }
+            item { SwitchPickedSourceCard() }
             item { EpisodeNotificationsCard() }
             item {
                 BufferCard(
@@ -1010,6 +1011,17 @@ private fun OnOffCard(title: String, summary: String, enabled: Boolean, onChange
             }
         }
     }
+}
+
+@Composable
+private fun SwitchPickedSourceCard(viewModel: SettingsViewModel = hiltViewModel()) {
+    val enabled by viewModel.switchFromPickedSource.collectAsStateWithLifecycle()
+    OnOffCard(
+        title = localizedStringResource(StringsR.string.settings_switch_picked_source),
+        summary = localizedStringResource(StringsR.string.settings_switch_picked_source_desc),
+        enabled = enabled,
+        onChange = viewModel::setSwitchFromPickedSource,
+    )
 }
 
 @Composable

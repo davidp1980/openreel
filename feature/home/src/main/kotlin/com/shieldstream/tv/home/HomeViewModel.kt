@@ -40,7 +40,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
@@ -100,7 +102,7 @@ class HomeViewModel @Inject constructor(
     private val watchProgress: WatchProgressRepository,
     private val episodeReleases: EpisodeReleaseRepository,
     private val tracking: EpisodeTrackingRepository,
-    settings: SettingsRepository,
+    private val settings: SettingsRepository,
     private val myList: MyListRepository,
     profiles: ProfileRepository,
     private val trakt: TraktRepository,
@@ -288,6 +290,12 @@ class HomeViewModel @Inject constructor(
                 .onEach { becauseYouWatchedRows.value = emptyList() }
                 .mapLatest { query -> buildBecauseYouWatchedRows(query) }
                 .collect { becauseYouWatchedRows.value = it }
+        }
+        viewModelScope.launch {
+            settings.homeRowItemLimit
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { loadedFilter?.let { load(it, force = true) } }
         }
     }
 
@@ -538,7 +546,7 @@ class HomeViewModel @Inject constructor(
     private suspend fun recommendationEntries(query: RecommendationQuery): List<Pair<MediaType, String>> = coroutineScope {
         suspend fun load(type: MediaType): List<String> {
             val result = withTimeoutOrNull(5_000) {
-                runCatching { trakt.recommendations(query.profileId, type) }
+                runCatching { trakt.recommendations(query.profileId, type, query.maxItems) }
             }
             return result?.fold(
                 onSuccess = { ids ->
@@ -615,10 +623,11 @@ class HomeViewModel @Inject constructor(
         prefetchJob?.cancel()
         prefetchJob = viewModelScope.launch {
             delay(1_500)
+            val limit = settings.homeRowItemLimit.first()
             for (other in listOf(HomeFilter.TV, HomeFilter.MOVIES)) {
                 coroutineScope {
                     launch { runCatching { catalogRepository.getFeatured(other) } }
-                    runCatching { catalogRepository.getHome(other) }
+                    runCatching { catalogRepository.getHome(other, limit) }
                 }
             }
         }
@@ -631,8 +640,9 @@ class HomeViewModel @Inject constructor(
         loadedFilter = filter
         viewModelScope.launch {
             _uiState.value = HomeUiState.Loading
+            val limit = settings.homeRowItemLimit.first()
             val featured = async { runCatching { catalogRepository.getFeatured(filter) }.getOrDefault(emptyList()) }
-            runCatching { catalogRepository.getHome(filter) }
+            runCatching { catalogRepository.getHome(filter, limit) }
                 .onSuccess { rows ->
                     _uiState.value = if (rows.isEmpty()) {
                         HomeUiState.Error(texts.get(StringsR.string.home_couldn_t_load_the_catalog_check_your))

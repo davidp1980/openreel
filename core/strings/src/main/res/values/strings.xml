@@ -162,4 +162,8 @@
     <string name="subtitle_color_red">Red</string>
     <string name="subtitle_color_black">Black</string>
     <string name="subtitle_color_transparent">None</string>
+    <string name="subtitle_live_title">Subtitle appearance</string>
+    <string name="subtitle_live_hint">◀ ▶ adjust · Back to return</string>
+    <string name="subtitle_live_sample">This is how subtitles will look\nwith the current settings.</string>
+    <string name="subtitle_reset">Reset</string>
 </resources>

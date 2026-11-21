@@ -101,4 +101,10 @@
     <string name="player_live_tracks_action">Audio y subtítulos</string>
     <string name="player_live_jump_to_live">Volver al directo</string>
     <string name="player_live_channel_position">%1$d / %2$d</string>
+    <string name="player_video_fit">Formato de imagen</string>
+    <string name="player_video_fit_original">Original</string>
+    <string name="player_video_fit_zoom">Ampliar (sin bandas)</string>
+    <string name="player_video_fit_stretch">Estirar</string>
+    <string name="player_switched_source">Cambiado a %1$s</string>
+    <string name="player_castellano">Castellano</string>
 </resources>

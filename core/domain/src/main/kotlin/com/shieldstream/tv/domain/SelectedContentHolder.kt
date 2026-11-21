@@ -30,9 +30,17 @@ data class PlaybackRequest(
     val liveChannels: List<LiveChannelEntry> = emptyList(),
     val liveChannelIndex: Int = 0,
     val requestedAtNs: Long = System.nanoTime(),
+    val manualPick: Boolean = false,
 )
 
 class SelectedContentHolder {
+    @Volatile private var pickedSourceFailure: String? = null
+
+    fun reportPickedSourceFailed(message: String) {
+        pickedSourceFailure = message
+    }
+
+    fun consumePickedSourceFailure(): String? = pickedSourceFailure.also { pickedSourceFailure = null }
     private val _details = MutableStateFlow<DetailsRequest?>(null)
     val details: StateFlow<DetailsRequest?> = _details.asStateFlow()
 
@@ -79,6 +87,7 @@ class SelectedContentHolder {
         liveChannels: List<LiveChannelEntry> = emptyList(),
         liveChannelIndex: Int = 0,
         requestedAtNs: Long = System.nanoTime(),
+        manualPick: Boolean = false,
     ) {
         _playback.value = PlaybackRequest(
             sources = sources,
@@ -91,6 +100,7 @@ class SelectedContentHolder {
             liveChannels = liveChannels,
             liveChannelIndex = liveChannelIndex,
             requestedAtNs = requestedAtNs,
+            manualPick = manualPick,
         )
     }
 }

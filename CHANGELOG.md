@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.49] - 2026-11-22
+
+### Added
+
+- **Per-profile & per-title track memory (`TrackMemoryRepository`):** manual audio and subtitle selections (including explicit subtitles off) are remembered per profile and title and reapplied automatically on subsequent episodes.
+- **Aspect ratio modes (`VideoFit`) with hardcoded black-bar detection (`LetterboxDetector`):** cycle between *Original*, *Zoom (no bars)*, and *Stretch* from the player's track panel, including automatic detection and scaling for 2.39:1 letterbox bars baked into 16:9 remuxes.
+- **Live subtitle appearance editor (`LiveSubtitleEditor`):** opening *Subtitles → Subtitle appearance* in the player now pauses playback and previews a live subtitle cue while adjusting size, bottom margin, text/background/outline colors, embedded style override, and reset.
+- **Smart source failover by similarity (`SourceSimilarity`) & auto-switch toggle:** when a manually selected source fails and auto-switch is enabled, failover picks the closest source by language, resolution, HDR, audio codec, video codec, and size, showing a notice with the fallback source; disabling *Auto-switch if picked source fails* in Settings returns directly to the source list with the failure reason.
+- **Persistent Home disk cache (`HomeDiskCache`):** stores the latest Home rows and featured billboard on disk for instant cold-start rendering with stale-while-revalidate background updates and offline fallback.
+- **Real Home row pagination up to 100 items:** TMDB catalog rows fetch multiple pages and Trakt *Recommended for you* requests up to the configured *Items per home row* limit, reloading Home automatically when the setting changes.
+
 ## [1.0.48] - 2026-11-21
 
 ### Added

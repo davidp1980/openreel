@@ -19,6 +19,7 @@ class ProfileDataCleaner @Inject constructor(
             WatchProgressRepositoryImpl.prefsNameFor(profileId),
             MyListRepositoryImpl.prefsNameFor(profileId),
             EpisodeTrackingRepositoryImpl.prefsNameFor(profileId),
+            TrackMemoryRepositoryImpl.prefsNameFor(profileId),
         )) {
             if (Build.VERSION.SDK_INT >= 24) {
                 context.deleteSharedPreferences(name)

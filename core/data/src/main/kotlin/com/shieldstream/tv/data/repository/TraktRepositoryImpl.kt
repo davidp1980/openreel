@@ -158,10 +158,11 @@ class TraktRepositoryImpl @Inject constructor(
         forget(profileId)
     }
 
-    override suspend fun recommendations(profileId: String, type: MediaType): List<String> {
+    override suspend fun recommendations(profileId: String, type: MediaType, limit: Int): List<String> {
         val token = validToken(profileId) ?: return emptyList()
         val kind = if (type == MediaType.MOVIE) "movies" else "shows"
-        val response = client.get("/recommendations/$kind?limit=$RECOMMENDATIONS_LIMIT", token)
+        val clamped = limit.coerceIn(1, 100)
+        val response = client.get("/recommendations/$kind?limit=$clamped", token)
         if (!response.ok) throw TraktHttpException(response.code)
         return (response.body as? JsonArray).orEmpty().mapNotNull { element ->
             (element as? JsonObject)?.obj("ids")?.int("tmdb")?.toString()

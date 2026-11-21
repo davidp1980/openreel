@@ -260,4 +260,6 @@
     <string name="settings_age_limit_all">Solo TP</string>
     <string name="settings_age_limit_up_to">Hasta %1$d</string>
     <string name="settings_age_limit_summary">En este perfil no se pueden reproducir títulos calificados por encima del límite ni los que no tienen calificación por edad.</string>
+    <string name="settings_switch_picked_source">Cambiar sola si falla la fuente elegida</string>
+    <string name="settings_switch_picked_source_desc">Salta a la fuente más parecida; desactivado vuelve a la lista de fuentes</string>
 </resources>

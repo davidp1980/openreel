@@ -199,6 +199,13 @@ private fun DetailsContent(
     kidsProfile: Boolean,
 ) {
     var panelOpen by remember { mutableStateOf(false) }
+    val reopenSources by viewModel.reopenSources.collectAsStateWithLifecycle()
+    LaunchedEffect(reopenSources) {
+        if (reopenSources) {
+            panelOpen = true
+            viewModel.sourcesReopened()
+        }
+    }
     var actionsOpen by remember { mutableStateOf(false) }
     var ratingTarget by remember { mutableStateOf<TraktRatingTarget?>(null) }
     var episodeMenu by remember { mutableStateOf<Episode?>(null) }

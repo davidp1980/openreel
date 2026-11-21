@@ -53,6 +53,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,9 +81,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.shieldstream.tv.model.VideoFit
 import com.shieldstream.tv.ui.component.AppIcons
 import com.shieldstream.tv.ui.component.CardImage
 import com.shieldstream.tv.ui.component.PlaybackMediaBadges
@@ -90,6 +94,8 @@ import com.shieldstream.tv.ui.component.onBackKey
 import com.shieldstream.tv.ui.component.requestFocusWithRetry
 import com.shieldstream.tv.ui.component.tvClickable
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlin.math.abs
 
 
 @OptIn(UnstableApi::class)
@@ -108,6 +114,7 @@ fun PlayerScreen(
     val subtitleTiming by viewModel.subtitleTiming.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val subtitleAppearance by viewModel.subtitleAppearance.collectAsStateWithLifecycle()
+    val videoFit by viewModel.videoFit.collectAsStateWithLifecycle()
     val rawThumbnailsEnabled by viewModel.seekThumbnails.collectAsStateWithLifecycle()
     val liveChannelIndex by viewModel.liveChannelIndex.collectAsStateWithLifecycle()
     val liveChannels = viewModel.liveChannels
@@ -125,6 +132,7 @@ fun PlayerScreen(
     val skipPrompt by viewModel.skipPrompt.collectAsStateWithLifecycle()
     val texts = rememberTexts()
     LaunchedEffect(Unit) { viewModel.goNext.collect { onBack() } }
+    LaunchedEffect(Unit) { viewModel.backToSources.collect { onBack() } }
     LaunchedEffect(notice) {
         if (notice != null) {
             delay(3_500)
@@ -192,6 +200,38 @@ fun PlayerScreen(
         } ?: false
     }
     val thumbs = rememberSeekThumbnails(mediaUri, pqHdr, active = scrubbing && !isLive)
+
+    var videoSize by remember(player) { mutableStateOf(player?.videoSize ?: VideoSize.UNKNOWN) }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onVideoSizeChanged(size: VideoSize) {
+                videoSize = size
+            }
+        }
+        player?.addListener(listener)
+        onDispose { player?.removeListener(listener) }
+    }
+    val frameIs16x9 = videoSize.width > 0 && videoSize.height > 0 &&
+        abs(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height - 16f / 9f) < 0.03f
+    val itemUri = player?.currentMediaItem?.localConfiguration?.uri
+    var letterboxScale by remember(itemUri) { mutableStateOf<Float?>(null) }
+    val wantsNoBars = !isLive && videoFit != VideoFit.FIT
+    LaunchedEffect(itemUri, wantsNoBars, frameIs16x9, isLive) {
+        val p = player
+        if (isLive || !wantsNoBars || !frameIs16x9 || letterboxScale != null || itemUri == null || p == null) return@LaunchedEffect
+        val format = p.videoFormat
+        if (format?.codecs?.let { it.startsWith("dvhe.05") || it.startsWith("dvh1.05") } == true) {
+            letterboxScale = 1f
+            return@LaunchedEffect
+        }
+        val duration = snapshotFlow { playback.durationMs }.first { it > 0 }
+        delay(1_500)
+        val pq = format?.let {
+            it.colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 || it.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION
+        } ?: false
+        letterboxScale = LetterboxDetector.measureScale(context, itemUri, pq, duration)
+    }
+    val barScale = if (!isLive && frameIs16x9) letterboxScale ?: 1f else 1f
     LaunchedEffect(player) { scrubMs = null }
 
     val focusRequester = remember { FocusRequester() }
@@ -556,6 +596,28 @@ fun PlayerScreen(
                 factory = { playerView },
                 update = { view ->
                     view.player = exoPlayer
+                    if (!isLive) {
+                        view.resizeMode = when (videoFit) {
+                            VideoFit.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                            VideoFit.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            VideoFit.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        }
+                        view.videoSurfaceView?.let { surface ->
+                            val (sx, sy) = when (videoFit) {
+                                VideoFit.FIT -> 1f to 1f
+                                VideoFit.ZOOM -> barScale to barScale
+                                VideoFit.STRETCH -> 1f to barScale
+                            }
+                            surface.scaleX = sx
+                            surface.scaleY = sy
+                        }
+                    } else {
+                        view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        view.videoSurfaceView?.let { surface ->
+                            surface.scaleX = 1f
+                            surface.scaleY = 1f
+                        }
+                    }
                     val evaluating = (externalSubs as? ExternalSubsState.Results)?.evaluating == true
                     view.subtitleView?.applySubtitleAppearance(subtitleAppearance)
                     view.subtitleView?.visibility = if (activeExternal != null || evaluating) View.GONE else View.VISIBLE
@@ -654,6 +716,11 @@ fun PlayerScreen(
                     },
                     allowExternalSubtitles = !isLive,
                     isLive = isLive,
+                    videoFit = videoFit,
+                    onCycleVideoFit = viewModel::cycleVideoFit,
+                    onAudioSelected = viewModel::rememberAudioLanguage,
+                    onSubtitleSelected = viewModel::rememberSubtitleLanguage,
+                    onSubtitlesOff = viewModel::rememberSubtitlesOff,
                 )
             }
         }

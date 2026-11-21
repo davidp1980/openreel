@@ -19,6 +19,7 @@ import com.shieldstream.tv.model.Quality
 import com.shieldstream.tv.model.SourceExclusions
 import com.shieldstream.tv.model.SubtitleAppearance
 import com.shieldstream.tv.model.SubtitlePreference
+import com.shieldstream.tv.model.VideoFit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -133,6 +134,25 @@ class SettingsRepositoryImpl @Inject constructor(
     override suspend fun setAutoNextEpisode(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_AUTO_NEXT, enabled).apply()
         autoNextFlow.value = enabled
+    }
+
+    private val videoFitFlow = MutableStateFlow(
+        prefs.getString(KEY_VIDEO_FIT, null)?.let { name -> VideoFit.entries.firstOrNull { it.name == name } }
+            ?: VideoFit.FIT,
+    )
+    override val videoFit: Flow<VideoFit> = videoFitFlow
+
+    override suspend fun setVideoFit(fit: VideoFit) {
+        prefs.edit().putString(KEY_VIDEO_FIT, fit.name).apply()
+        videoFitFlow.value = fit
+    }
+
+    private val switchPickedFlow = MutableStateFlow(prefs.getBoolean(KEY_SWITCH_PICKED_SOURCE, true))
+    override val switchFromPickedSource: Flow<Boolean> = switchPickedFlow
+
+    override suspend fun setSwitchFromPickedSource(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_SWITCH_PICKED_SOURCE, enabled).apply()
+        switchPickedFlow.value = enabled
     }
     private val searchQwertyFlow = MutableStateFlow(prefs.getBoolean(KEY_SEARCH_QWERTY, false))
     override val searchQwerty: Flow<Boolean> = searchQwertyFlow
@@ -274,6 +294,8 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_HIGH_RES_BACKDROPS = "high_res_backdrops"
         const val KEY_SEARCH_QWERTY = "search_qwerty"
         const val KEY_AUTO_NEXT = "auto_next_episode"
+        const val KEY_VIDEO_FIT = "video_fit"
+        const val KEY_SWITCH_PICKED_SOURCE = "switch_from_picked_source"
         const val KEY_HOME_ROW_ITEM_LIMIT = "home_row_item_limit"
         const val KEY_DEBRID = "debrid_service"
         const val KEY_PROVIDERS_OFF = "source_providers_off"

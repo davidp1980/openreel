@@ -101,4 +101,10 @@
     <string name="player_live_tracks_action">Audio &amp; subtitles</string>
     <string name="player_live_jump_to_live">Jump to live</string>
     <string name="player_live_channel_position">%1$d / %2$d</string>
+    <string name="player_video_fit">Aspect ratio</string>
+    <string name="player_video_fit_original">Original</string>
+    <string name="player_video_fit_zoom">Zoom (no bars)</string>
+    <string name="player_video_fit_stretch">Stretch</string>
+    <string name="player_switched_source">Switched to %1$s</string>
+    <string name="player_castellano">Spanish</string>
 </resources>

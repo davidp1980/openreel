@@ -26,6 +26,7 @@ import com.shieldstream.tv.model.Episode
 import com.shieldstream.tv.model.MediaType
 import com.shieldstream.tv.model.PlaybackMedia
 import com.shieldstream.tv.model.SourceExclusions
+import com.shieldstream.tv.model.SourceSimilarity
 import com.shieldstream.tv.model.StreamSource
 import com.shieldstream.tv.model.WatchProgress
 import com.shieldstream.tv.strings.Texts
@@ -37,6 +38,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.catch
@@ -521,15 +524,29 @@ class DetailsViewModel @Inject constructor(
         loadSources(c.selectedEpisode)
     }
 
+    private val switchFromPickedSource: StateFlow<Boolean> = settings.switchFromPickedSource
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    private val _reopenSources = MutableStateFlow(false)
+    val reopenSources: StateFlow<Boolean> = _reopenSources.asStateFlow()
+
+    fun sourcesReopened() {
+        _reopenSources.value = false
+    }
+
     fun playSource(source: StreamSource) {
-        val ready = content()?.sources as? SourcesState.Ready ?: return
-        startPlayback(
-            ready.sources,
-            startIndex = ready.sources.indexOf(source).coerceAtLeast(0),
-            fromStart = false,
-            useSavedSource = false,
-            includeExcluded = true,
-        )
+        val c = content() ?: return
+        val ready = c.sources as? SourcesState.Ready ?: return
+        val switchIfFails = switchFromPickedSource.value
+        val queue = if (switchIfFails) {
+            val rest = c.eligibleSources(ready.sources.filter { it.id != source.id })
+                .filter { it.resolveUrl == null || it.isCached || it.directUrl != null || it.debrid == ITHIL_ALLDEBRID }
+                .distinctBy { it.infoHash.lowercase().ifBlank { it.id } }
+            listOf(source) + SourceSimilarity.orderBySimilarity(source, rest)
+        } else {
+            listOf(source)
+        }
+        handoff(c, fromStart = false, queue = queue, manualPick = !switchIfFails)
     }
 
     fun consumeMessage() = updateContent { it.copy(message = null) }
@@ -543,6 +560,10 @@ class DetailsViewModel @Inject constructor(
     fun consumeSimilarFocusRestore(): Boolean = (similarFocusKey != null).also { similarFocusKey = null }
 
     fun onScreenResumed() {
+        holder.consumePickedSourceFailure()?.let { reason ->
+            updateContent { it.copy(message = texts.get(StringsR.string.details_picked_source_failed, reason)) }
+            _reopenSources.value = true
+        }
         val next = holder.consumeNextRequest() ?: return
         val c = content() ?: return
         val loaded = (c.episodes as? EpisodesState.Ready)?.episodes
@@ -646,17 +667,6 @@ class DetailsViewModel @Inject constructor(
         includeExcluded: Boolean = false,
     ) {
         val c = content() ?: return
-        if (ageLimit != null) {
-            // The age rating arrives with the details; an autoplay handoff can get here first.
-            if (!detailsLoaded) {
-                updateContent { it.copy(pendingPlay = true) }
-                return
-            }
-            if (c.ageBlocked) {
-                updateContent { it.copy(message = ageBlockedMessage(c.details.minimumAge), pendingPlay = false) }
-                return
-            }
-        }
         val item = c.details.item
         val episode = c.selectedEpisode?.takeIf { c.isSeries }
         val key = if (episode != null) {
@@ -690,6 +700,33 @@ class DetailsViewModel @Inject constructor(
             }
             return
         }
+        handoff(c, fromStart = fromStart, queue = queue)
+    }
+
+    private fun handoff(
+        c: DetailsUiState.Content,
+        fromStart: Boolean,
+        queue: List<StreamSource>,
+        manualPick: Boolean = false,
+    ) {
+        if (ageLimit != null) {
+            // The age rating arrives with the details; an autoplay handoff can get here first.
+            if (!detailsLoaded) {
+                updateContent { it.copy(pendingPlay = true) }
+                return
+            }
+            if (c.ageBlocked) {
+                updateContent { it.copy(message = ageBlockedMessage(c.details.minimumAge), pendingPlay = false) }
+                return
+            }
+        }
+        val item = c.details.item
+        val episode = c.selectedEpisode?.takeIf { c.isSeries }
+        val key = if (episode != null) {
+            WatchProgress.episodeKey(item.id, episode.season, episode.number)
+        } else {
+            WatchProgress.movieKey(item.id)
+        }
         val label = episode?.let { "${item.title} · ${texts.episodeCode(it)} · ${it.title}" } ?: item.title
         val media = PlaybackMedia(
             type = item.type,
@@ -710,6 +747,7 @@ class DetailsViewModel @Inject constructor(
             media = media,
             next = episode?.let { nextEpisodeAfter(c, it) },
             requestedAtNs = requestedAtNs,
+            manualPick = manualPick,
         )
         _events.tryEmit(DetailsEvent.OpenPlayer)
     }

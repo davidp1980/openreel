@@ -257,6 +257,13 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settings.setDialogueBoost(enabled) }
     }
 
+    val switchFromPickedSource: StateFlow<Boolean> = settings.switchFromPickedSource
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setSwitchFromPickedSource(enabled: Boolean) {
+        viewModelScope.launch { settings.setSwitchFromPickedSource(enabled) }
+    }
+
     val subtitleAppearance: StateFlow<SubtitleAppearance> = settings.subtitleAppearance
         .stateIn(viewModelScope, SharingStarted.Eagerly, SubtitleAppearance())
 

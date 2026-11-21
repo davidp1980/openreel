@@ -375,6 +375,56 @@ class SubtitleCoordinatorTest {
         }
     }
 
+    @Test
+    fun `remembered subtitle language and explicit off override default preference`() {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val tracks = englishTextTracks()
+        val player = mockk<Player>(relaxed = true) {
+            every { currentTracks } returns tracks
+        }
+        var parameters = TrackSelectionParameters.DEFAULT
+        every { player.trackSelectionParameters } answers { parameters }
+        every { player.trackSelectionParameters = any() } answers { parameters = firstArg() }
+
+        try {
+            val remembered = SubtitleCoordinator(
+                scope = scope,
+                subtitles = mockk(relaxed = true),
+                subtitlePreference = SubtitlePreference.OFF,
+                texts = mockk(relaxed = true),
+                media = { PlaybackMedia(MediaType.TV, "tt1", "Show", "Show", 2026) },
+                playingFileName = { "Show.S01E02.mkv" },
+                sourceUrl = { "https://video.test/ep2.mkv" },
+                player = { player },
+                notify = {},
+                referenceReader = FakeReferenceReader(null),
+                preferredSubtitle = { "en" },
+            )
+            remembered.onPlayerReady(player, tracks)
+            assertEquals(false, parameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT))
+            assertEquals(listOf(0), parameters.overrides[tracks.groups.first().mediaTrackGroup]?.trackIndices)
+
+            parameters = TrackSelectionParameters.DEFAULT
+            val turnedOff = SubtitleCoordinator(
+                scope = scope,
+                subtitles = mockk(relaxed = true),
+                subtitlePreference = SubtitlePreference.SPANISH,
+                texts = mockk(relaxed = true),
+                media = { PlaybackMedia(MediaType.TV, "tt1", "Show", "Show", 2026) },
+                playingFileName = { "Show.S01E02.mkv" },
+                sourceUrl = { "https://video.test/ep2.mkv" },
+                player = { player },
+                notify = {},
+                referenceReader = FakeReferenceReader(null),
+                subtitlesOff = { true },
+            )
+            turnedOff.onPlayerReady(player, tracks)
+            assertTrue(parameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT))
+        } finally {
+            scope.cancel()
+        }
+    }
+
     private fun englishTextTracks(): Tracks {
         val format = Format.Builder()
             .setId("english-reference")

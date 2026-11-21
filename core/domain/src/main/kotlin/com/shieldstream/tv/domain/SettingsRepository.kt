@@ -5,7 +5,9 @@ import com.shieldstream.tv.model.DeviceOptimization
 import com.shieldstream.tv.model.SourceExclusions
 import com.shieldstream.tv.model.SubtitleAppearance
 import com.shieldstream.tv.model.SubtitlePreference
+import com.shieldstream.tv.model.VideoFit
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 interface SettingsRepository {
     val token: Flow<String?>
@@ -63,6 +65,12 @@ interface SettingsRepository {
 
     val autoNextEpisode: Flow<Boolean>
     suspend fun setAutoNextEpisode(enabled: Boolean)
+
+    val switchFromPickedSource: Flow<Boolean> get() = flowOf(true)
+    suspend fun setSwitchFromPickedSource(enabled: Boolean) {}
+
+    val videoFit: Flow<VideoFit> get() = flowOf(VideoFit.FIT)
+    suspend fun setVideoFit(fit: VideoFit) {}
 
     val searchQwerty: Flow<Boolean>
     suspend fun setSearchQwerty(enabled: Boolean)

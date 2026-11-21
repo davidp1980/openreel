@@ -47,7 +47,7 @@ interface TraktRepository {
 
     suspend fun disconnect(profileId: String)
 
-    suspend fun recommendations(profileId: String, type: MediaType): List<String>
+    suspend fun recommendations(profileId: String, type: MediaType, limit: Int = 40): List<String>
 
     suspend fun importStremioList(profileId: String): Result<TraktListImport>
 

@@ -89,6 +89,7 @@ interface TmdbApi {
     suspend fun nowPlayingMovies(
         @Query("api_key") key: String,
         @Query("region") region: String = Lang.current.region,
+        @Query("page") page: Int = 1,
     ): TmdbPaginated<TmdbMovieDto>
 
     @GET("3/discover/movie")
@@ -97,6 +98,7 @@ interface TmdbApi {
         @Query("with_genres") genres: String,
         @Query("sort_by") sortBy: String = "popularity.desc",
         @Query("vote_count.gte") minVotes: Int = 300,
+        @Query("page") page: Int = 1,
     ): TmdbPaginated<TmdbMovieDto>
 
     @GET("3/discover/tv")
@@ -105,6 +107,7 @@ interface TmdbApi {
         @Query("with_genres") genres: String,
         @Query("sort_by") sortBy: String = "popularity.desc",
         @Query("vote_count.gte") minVotes: Int = 100,
+        @Query("page") page: Int = 1,
     ): TmdbPaginated<TmdbTvDto>
 
     @GET("3/search/multi")

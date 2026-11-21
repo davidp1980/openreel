@@ -260,4 +260,6 @@
     <string name="settings_age_limit_all">All ages only</string>
     <string name="settings_age_limit_up_to">Up to %1$d</string>
     <string name="settings_age_limit_summary">Titles rated above the limit, or without an age rating, can\'t be played on this profile.</string>
+    <string name="settings_switch_picked_source">Auto-switch if picked source fails</string>
+    <string name="settings_switch_picked_source_desc">Jump to the closest similar source; off returns to the source list</string>
 </resources>

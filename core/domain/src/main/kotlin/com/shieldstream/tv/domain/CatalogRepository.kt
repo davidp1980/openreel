@@ -13,7 +13,7 @@ import com.shieldstream.tv.model.StreamSource
 import com.shieldstream.tv.model.ShowAiring
 
 interface CatalogRepository {
-    suspend fun getHome(filter: HomeFilter): List<CatalogRow>
+    suspend fun getHome(filter: HomeFilter, maxItems: Int = 20): List<CatalogRow>
 
     suspend fun getFeatured(filter: HomeFilter): List<FeaturedItem>
 

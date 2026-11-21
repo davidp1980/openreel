@@ -84,4 +84,5 @@
     <string name="details_age_minimum">%1$d+</string>
     <string name="details_age_blocked">Not available on this profile: rated %1$d+.</string>
     <string name="details_age_blocked_unrated">Not available on this profile: this title has no age rating.</string>
+    <string name="details_picked_source_failed">Selected source failed: %1$s</string>
 </resources>

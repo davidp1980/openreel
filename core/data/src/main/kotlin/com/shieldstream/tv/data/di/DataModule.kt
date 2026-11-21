@@ -26,8 +26,10 @@ import com.shieldstream.tv.domain.SubtitleRepository
 import com.shieldstream.tv.data.subtitles.SubtitleRepositoryImpl
 import com.shieldstream.tv.domain.WatchProgressRepository
 import com.shieldstream.tv.data.repository.ProfileRepositoryImpl
+import com.shieldstream.tv.data.repository.TrackMemoryRepositoryImpl
 import com.shieldstream.tv.data.repository.TraktRepositoryImpl
 import com.shieldstream.tv.domain.ProfileRepository
+import com.shieldstream.tv.domain.TrackMemoryRepository
 import com.shieldstream.tv.domain.TraktRepository
 import com.shieldstream.tv.data.update.UpdateRepositoryImpl
 import com.shieldstream.tv.domain.UpdateRepository
@@ -164,5 +166,9 @@ abstract class DataModule {
     @Binds
     @Singleton
     abstract fun bindLiveDrmLicenseProvider(impl: RtveDrmTokenClient): LiveDrmLicenseProvider
+
+    @Binds
+    @Singleton
+    abstract fun bindTrackMemoryRepository(impl: TrackMemoryRepositoryImpl): TrackMemoryRepository
 
 }

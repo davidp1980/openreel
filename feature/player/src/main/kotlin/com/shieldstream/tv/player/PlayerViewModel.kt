@@ -31,6 +31,7 @@ import com.shieldstream.tv.domain.SettingsRepository
 import com.shieldstream.tv.domain.SubtitleRepository
 import com.shieldstream.tv.domain.WatchProgressRepository
 import com.shieldstream.tv.domain.ScrobbleAction
+import com.shieldstream.tv.domain.TrackMemoryRepository
 import com.shieldstream.tv.domain.TraktRepository
 import com.shieldstream.tv.media.Media3Factory
 import com.shieldstream.tv.media.PlaybackPolicyProvider
@@ -39,9 +40,11 @@ import androidx.media3.common.PlaybackException
 import com.shieldstream.tv.model.ExternalSubtitle
 import com.shieldstream.tv.model.LiveChannelEntry
 import com.shieldstream.tv.model.PlaybackVideoInfo
+import com.shieldstream.tv.model.Quality
 import com.shieldstream.tv.model.StreamSource
 import com.shieldstream.tv.model.SubtitleAppearance
 import com.shieldstream.tv.model.SubtitlePreference
+import com.shieldstream.tv.model.VideoFit
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
@@ -90,6 +93,7 @@ class PlayerViewModel @Inject constructor(
     private val trakt: TraktRepository,
     private val skipSegmentsRepository: SkipSegmentsRepository,
     private val liveDrmProvider: LiveDrmLicenseProvider,
+    private val trackMemory: TrackMemoryRepository,
     private val texts: Texts,
     private val catalogCache: CatalogCacheRefresher,
 ) : ViewModel() {
@@ -163,6 +167,27 @@ class PlayerViewModel @Inject constructor(
     val nextUp: StateFlow<NextUpUiState> = _nextUp.asStateFlow()
     private val _goNext = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val goNext: SharedFlow<Unit> = _goNext.asSharedFlow()
+    private val _backToSources = MutableSharedFlow<Unit>(replay = 1)
+    val backToSources: SharedFlow<Unit> = _backToSources.asSharedFlow()
+
+    private fun sourceFailed(message: String) {
+        if (!isLive && playbackSnapshot?.manualPick == true) {
+            Log.i("PlayerVM", "Manual source failed, returning to source list: $message")
+            holder.reportPickedSourceFailed(message.lineSequence().lastOrNull { it.isNotBlank() } ?: message)
+            _backToSources.tryEmit(Unit)
+        } else {
+            _uiState.value = PlayerUiState.Error(message)
+        }
+    }
+
+    val videoFit: StateFlow<VideoFit> = settings.videoFit
+        .stateIn(viewModelScope, SharingStarted.Eagerly, VideoFit.FIT)
+
+    fun cycleVideoFit() {
+        val next = videoFit.value.next()
+        viewModelScope.launch { settings.setVideoFit(next) }
+    }
+
     private var nextUpDismissed = false
     private var wentNext = false
     private val autoNext: StateFlow<Boolean> = settings.autoNextEpisode.stateIn(viewModelScope, SharingStarted.Eagerly, true)
@@ -171,6 +196,11 @@ class PlayerViewModel @Inject constructor(
     private val spanishOnly = !isLive && profiles.active.value.spanishOnlySources
     private val spanishFirst = !isLive && (profiles.active.value.spanishFirst || spanishOnly)
     private val subtitlePreference = profiles.active.value.subtitlePreference
+    private val trackMemoryKey = if (isLive) {
+        null
+    } else {
+        mediaSnapshot?.let { it.imdbId ?: "${it.type.name}:${it.title}" } ?: playbackSnapshot?.label
+    }
     private val _subtitleAppearance = MutableStateFlow(profiles.active.value.subtitleAppearance)
     val subtitleAppearance: StateFlow<SubtitleAppearance> = _subtitleAppearance.asStateFlow()
     private val experimentalSubtitleSync = profiles.active.value.experimentalSubtitleSync
@@ -197,6 +227,7 @@ class PlayerViewModel @Inject constructor(
 
     private var playbackRetries = 0
     private var castellanoAudioChecked = false
+    private var rememberedTracksApplied = false
 
     private var saverJob: Job? = null
 
@@ -222,6 +253,12 @@ class PlayerViewModel @Inject constructor(
         notify = { _notice.value = it },
         referenceReader = Media3EmbeddedReferenceReader(media3Factory.dataSourceFactory),
         experimentalSyncEnabled = experimentalSubtitleSync,
+        preferredSubtitle = {
+            trackMemoryKey?.let(trackMemory::subtitle)?.takeUnless { it == TrackMemoryRepository.SUBTITLES_OFF }
+        },
+        subtitlesOff = {
+            trackMemoryKey?.let(trackMemory::subtitle) == TrackMemoryRepository.SUBTITLES_OFF
+        },
     )
     val externalSubs: StateFlow<ExternalSubsState> = subtitleCoordinator.externalSubs
     val activeExternal: StateFlow<ActiveExternalSubtitle?> = subtitleCoordinator.activeExternal
@@ -355,7 +392,7 @@ class PlayerViewModel @Inject constructor(
                         _notice.value = event.notice
                         playFrom(event.index)
                     }
-                    is SourceResolutionEvent.Error -> _uiState.value = PlayerUiState.Error(event.message)
+                    is SourceResolutionEvent.Error -> sourceFailed(event.message)
                 }
             }
         }
@@ -380,9 +417,30 @@ class PlayerViewModel @Inject constructor(
         val resumeAt = savedResumePosition()
         launchPlayer(event.url, startPositionMs = resumeAt)
         if (resumeAt > 0) _notice.value = texts.get(StringsR.string.player_resume_from, formatTime(resumeAt))
+        if (event.index > 0) _notice.value = texts.get(StringsR.string.player_switched_source, describeSource(source))
         _uiState.value = PlayerUiState.Playing
         startProgressSaver()
         startSegmentsWatcher()
+    }
+
+    private fun describeSource(source: StreamSource): String = listOfNotNull(
+        source.quality.label.takeIf { source.quality != Quality.UNKNOWN },
+        source.hdrType.label.takeIf { source.isHdr },
+        texts.get(StringsR.string.player_castellano).takeIf { source.advertisesSpanishAudio },
+    ).joinToString(" · ").ifBlank { source.title.take(40) }
+
+    fun rememberAudioLanguage(language: String?) {
+        val key = trackMemoryKey ?: return
+        if (!language.isNullOrBlank()) trackMemory.saveAudio(key, language)
+    }
+
+    fun rememberSubtitleLanguage(language: String?) {
+        val key = trackMemoryKey ?: return
+        if (!language.isNullOrBlank()) trackMemory.saveSubtitle(key, language)
+    }
+
+    fun rememberSubtitlesOff() {
+        trackMemoryKey?.let(trackMemory::saveSubtitlesOff)
     }
 
     fun clearNotice() {
@@ -394,7 +452,10 @@ class PlayerViewModel @Inject constructor(
 
     fun searchExternalSubtitles(language: String) = subtitleCoordinator.search(language)
 
-    fun downloadExternalSubtitle(item: ExternalSubtitle) = subtitleCoordinator.download(item)
+    fun downloadExternalSubtitle(item: ExternalSubtitle) {
+        rememberSubtitleLanguage(item.language)
+        subtitleCoordinator.download(item)
+    }
 
     fun resetExternalSubtitles() = subtitleCoordinator.reset()
 
@@ -561,7 +622,7 @@ class PlayerViewModel @Inject constructor(
             is SourceFailoverAction.FatalError -> {
                 player.stop()
                 resolvedUrl = null
-                _uiState.value = PlayerUiState.Error(action.message)
+                sourceFailed(action.message)
             }
             is SourceFailoverAction.SwitchSource -> switchSource(player, action, savePosition = true)
         }
@@ -829,6 +890,7 @@ class PlayerViewModel @Inject constructor(
                     if (playbackState == Player.STATE_READY) {
                         diagnostics.onReady(player.currentPosition)
                         updateVideoInfo()
+                        applyRememberedAudio(player, player.currentTracks)
                         preferCastellanoTrack(player, player.currentTracks)
                         subtitleCoordinator.onPlayerReady(player, player.currentTracks)
                         checkSpanishAudio(player, player.currentTracks)
@@ -871,9 +933,7 @@ class PlayerViewModel @Inject constructor(
                         player.prepare()
                         player.playWhenReady = !spanishOnly || sourceFailover.spanishChecked
                     } else {
-                        _uiState.value = PlayerUiState.Error(
-                            texts.get(StringsR.string.player_playback_stopped, error.errorCodeName),
-                        )
+                        sourceFailed(texts.get(StringsR.string.player_playback_stopped, error.errorCodeName))
                     }
                 }
 
@@ -896,11 +956,13 @@ class PlayerViewModel @Inject constructor(
                 override fun onTracksChanged(tracks: Tracks) {
                     if (!isActivePlayer()) return
                     subtitleCoordinator.onTracksChanged(player, tracks)
+                    applyRememberedAudio(player, tracks)
                     checkSpanishAudio(player, tracks)
                 }
 
             },
         )
+        rememberedTracksApplied = false
         val mediaItem = buildMediaItem(url, currentSource?.mimeType, licenseUrl)
         if (isLive || startPositionMs == C.TIME_UNSET) {
             player.setMediaItem(mediaItem)
@@ -917,6 +979,29 @@ class PlayerViewModel @Inject constructor(
             player.prepare()
             trace("player_prepared")
         }
+    }
+
+    private fun applyRememberedAudio(player: ExoPlayer, tracks: Tracks) {
+        if (rememberedTracksApplied || isLive) return
+        val key = trackMemoryKey ?: return
+        val language = trackMemory.audio(key) ?: return
+        val match = tracks.groups
+            .filter { it.type == C.TRACK_TYPE_AUDIO }
+            .firstNotNullOfOrNull { group ->
+                (0 until group.length)
+                    .firstOrNull { index ->
+                        group.isTrackSupported(index) &&
+                            group.getTrackFormat(index).language?.let {
+                                it.equals(language, ignoreCase = true) ||
+                                    it.startsWith("$language-", ignoreCase = true)
+                            } == true
+                    }
+                    ?.let { group to it }
+            } ?: return
+        rememberedTracksApplied = true
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setOverrideForType(TrackSelectionOverride(match.first.mediaTrackGroup, match.second))
+            .build()
     }
 
     private fun trace(stage: String, details: String = "") {

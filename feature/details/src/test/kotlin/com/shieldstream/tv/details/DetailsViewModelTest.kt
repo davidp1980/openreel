@@ -494,6 +494,71 @@ class DetailsViewModelTest {
         }
     }
 
+    @Test
+    fun `playSource orders failover queue by similarity when auto switch is enabled`() = runTest {
+        val item = ageMovie()
+        val picked = source(Episode(1, 1, "", "", null, null)).copy(
+            id = "picked",
+            infoHash = "picked",
+            title = "Movie 2160p DV Castellano",
+            quality = Quality.UHD_2160,
+            hdrType = HdrType.DOLBY_VISION,
+        )
+        val similar = source(Episode(1, 1, "", "", null, null)).copy(
+            id = "similar",
+            infoHash = "similar",
+            title = "Movie 2160p HDR10 Castellano",
+            quality = Quality.UHD_2160,
+            hdrType = HdrType.HDR10,
+        )
+        val english = source(Episode(1, 1, "", "", null, null)).copy(
+            id = "english",
+            infoHash = "english",
+            title = "Movie 2160p DV English",
+            quality = Quality.UHD_2160,
+            hdrType = HdrType.DOLBY_VISION,
+        )
+        val catalog = mockk<CatalogRepository>()
+        coEvery { catalog.getDetails(item) } returns CatalogDetails(item = item)
+        every { catalog.getStreams(item, null) } returns flowOf(StreamResults(sources = listOf(english, picked, similar)))
+        val holder = SelectedContentHolder().apply { selectItem(item) }
+        val viewModel = viewModel(catalog, holder, switchFromPickedSource = true)
+        testScheduler.advanceUntilIdle()
+
+        viewModel.playSource(picked)
+        testScheduler.advanceUntilIdle()
+
+        val request = holder.playback.value!!
+        assertEquals(false, request.manualPick)
+        assertEquals(listOf("picked", "similar", "english"), request.sources.map { it.id })
+    }
+
+    @Test
+    fun `playSource with auto switch disabled uses manualPick and reopens sources on failure`() = runTest {
+        val item = ageMovie()
+        val picked = source(Episode(1, 1, "", "", null, null)).copy(id = "picked", infoHash = "picked")
+        val other = source(Episode(1, 1, "", "", null, null)).copy(id = "other", infoHash = "other")
+        val catalog = mockk<CatalogRepository>()
+        coEvery { catalog.getDetails(item) } returns CatalogDetails(item = item)
+        every { catalog.getStreams(item, null) } returns flowOf(StreamResults(sources = listOf(picked, other)))
+        val holder = SelectedContentHolder().apply { selectItem(item) }
+        val viewModel = viewModel(catalog, holder, switchFromPickedSource = false)
+        testScheduler.advanceUntilIdle()
+
+        viewModel.playSource(picked)
+        testScheduler.advanceUntilIdle()
+
+        val request = holder.playback.value!!
+        assertEquals(true, request.manualPick)
+        assertEquals(listOf("picked"), request.sources.map { it.id })
+
+        holder.reportPickedSourceFailed("404")
+        viewModel.onScreenResumed()
+        assertEquals(true, viewModel.reopenSources.value)
+        viewModel.sourcesReopened()
+        assertEquals(false, viewModel.reopenSources.value)
+    }
+
     private fun ageMovie() = CatalogItem(
         id = "77",
         imdbId = "tt77",
@@ -513,6 +578,7 @@ class DetailsViewModelTest {
         exclusions: SourceExclusions = SourceExclusions(),
         trakt: TraktRepository = mockk(relaxed = true),
         profile: Profile = Profile(id = "test", name = "Test", avatar = 0),
+        switchFromPickedSource: Boolean = true,
     ): DetailsViewModel =
         DetailsViewModel(
             catalogRepository = catalog,
@@ -535,6 +601,7 @@ class DetailsViewModelTest {
                 every { spanishOnlySources } returns flowOf(false)
                 every { sourceExclusions } returns flowOf(exclusions)
                 every { deviceOptimization } returns flowOf(DeviceOptimization.AUTOMATIC)
+                every { this@mockk.switchFromPickedSource } returns flowOf(switchFromPickedSource)
             },
             trakt = trakt,
             myList = mockk<MyListRepository>(relaxed = true) {
