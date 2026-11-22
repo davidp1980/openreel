@@ -21,6 +21,7 @@ import com.shieldstream.tv.model.CatalogItem
 import com.shieldstream.tv.model.DeviceCapabilities
 import com.shieldstream.tv.model.DeviceOptimization
 import com.shieldstream.tv.model.Episode
+import com.shieldstream.tv.model.HdrPreference
 import com.shieldstream.tv.model.HdrType
 import com.shieldstream.tv.model.MediaType
 import com.shieldstream.tv.model.Profile
@@ -600,6 +601,7 @@ class DetailsViewModelTest {
                 every { spanishFirst } returns flowOf(false)
                 every { spanishOnlySources } returns flowOf(false)
                 every { sourceExclusions } returns flowOf(exclusions)
+                every { hdrPreference } returns flowOf(HdrPreference.AUTOMATIC)
                 every { deviceOptimization } returns flowOf(DeviceOptimization.AUTOMATIC)
                 every { this@mockk.switchFromPickedSource } returns flowOf(switchFromPickedSource)
             },

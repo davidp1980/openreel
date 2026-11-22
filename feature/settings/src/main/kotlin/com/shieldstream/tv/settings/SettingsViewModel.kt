@@ -24,6 +24,7 @@ import com.shieldstream.tv.media.PlaybackPolicyProvider
 import com.shieldstream.tv.model.AudioCodec
 import com.shieldstream.tv.model.DeviceCapabilities
 import com.shieldstream.tv.model.DeviceOptimization
+import com.shieldstream.tv.model.HdrPreference
 import com.shieldstream.tv.model.HdrType
 import com.shieldstream.tv.model.MemoryProfile
 import com.shieldstream.tv.model.Quality
@@ -208,6 +209,13 @@ class SettingsViewModel @Inject constructor(
 
     val sourceExclusions: StateFlow<SourceExclusions> = settings.sourceExclusions
         .stateIn(viewModelScope, SharingStarted.Eagerly, SourceExclusions())
+
+    val hdrPreference: StateFlow<HdrPreference> = settings.hdrPreference
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HdrPreference.AUTOMATIC)
+
+    fun setHdrPreference(preference: HdrPreference) {
+        viewModelScope.launch { settings.setHdrPreference(preference) }
+    }
 
     fun setMaxSourceSize(maxSizeBytes: Long?) {
         viewModelScope.launch {

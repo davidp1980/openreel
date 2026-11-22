@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.51] - 2026-11-22
+
+### Added
+
+- **HDR priority setting (`HdrPreference`):** added *Automatic*, *Prefer SDR*, and *Ignore* options in *Settings → Sources & exclusions* so devices with HDR disabled can prefer SDR without hiding HDR-only releases.
+- **Manual sort chip in Sources panel:** cycle between *Recommended*, *Size ↓*, *Size ↑*, and *Seeds ↓* directly from the source list header without affecting autoplay.
+
+### Changed
+
+- **Predictable base source sorting (`PrioritizeSourcesUseCase`):** removed the `languages.isNotEmpty()` boost, moved resolution (`quality.rank`) ahead of HDR, fixed `AUTOMATIC` HDR ranking when a display reports no HDR support, distinguished confirmed cached (`isCached`) and direct sources from unconfirmed `resolveUrl` links, and ordered cached sources by size before seeders.
+- **Dual Castellano + VO & Latino audio detection (`SpanishAudio`):** ranked *Dual Castellano + VO* ahead of *Castellano* and *VO*, stopped bare `Dual` from scoring as Spanish, ensured explicit Latino indicators (including `es-la` and expanded Latin American country flags) rank below VO even when addons attach a Spain flag, and preserved focus/scroll position in `SourcesPanel` when slower providers finish loading.
+
 ## [1.0.50] - 2026-11-22
 
 ### Added

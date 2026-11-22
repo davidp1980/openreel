@@ -166,4 +166,13 @@
     <string name="subtitle_live_hint">◀ ▶ adjust · Back to return</string>
     <string name="subtitle_live_sample">This is how subtitles will look\nwith the current settings.</string>
     <string name="subtitle_reset">Reset</string>
+    <string name="settings_hdr_priority">HDR priority</string>
+    <string name="settings_hdr_priority_summary">Choose whether to prefer HDR, prefer SDR, or ignore HDR when sorting sources.</string>
+    <string name="settings_hdr_automatic">Automatic</string>
+    <string name="settings_hdr_prefer_sdr">Prefer SDR</string>
+    <string name="settings_hdr_ignore">Ignore</string>
+    <string name="details_sort_recommended">Recommended</string>
+    <string name="details_sort_size_desc">Size ↓</string>
+    <string name="details_sort_size_asc">Size ↑</string>
+    <string name="details_sort_seeds">Seeds ↓</string>
 </resources>

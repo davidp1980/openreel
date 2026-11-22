@@ -598,6 +598,7 @@ class DetailsViewModel @Inject constructor(
             val spanishFirst = settings.spanishFirst.first()
             val spanishOnly = settings.spanishOnlySources.first()
             val sourceExclusions = settings.sourceExclusions.first()
+            val hdrPreference = settings.hdrPreference.first()
             val optimization = settings.deviceOptimization.first()
             val capabilities = deviceCapabilities.capabilities
             val hardwareCodecs = when (optimization) {
@@ -626,6 +627,7 @@ class DetailsViewModel @Inject constructor(
                         capabilities.supportedHdr,
                         hardwareVideoCodecs = hardwareCodecs,
                         preferSpanish = spanishFirst,
+                        hdrPreference = hdrPreference,
                     )
                 }
                 // Keep provider parsing, snapshot construction, enrichment and sorting off the UI thread.

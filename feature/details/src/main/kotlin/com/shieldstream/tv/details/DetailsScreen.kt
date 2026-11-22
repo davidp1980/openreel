@@ -1286,6 +1286,24 @@ private fun EpisodeCard(
     }
 }
 
+private enum class SourceSortOrder(val labelRes: Int) {
+    RECOMMENDED(StringsR.string.details_sort_recommended),
+    SIZE_DESC(StringsR.string.details_sort_size_desc),
+    SIZE_ASC(StringsR.string.details_sort_size_asc),
+    SEEDS_DESC(StringsR.string.details_sort_seeds);
+
+    fun next(): SourceSortOrder = entries[(ordinal + 1) % entries.size]
+}
+
+private fun List<StreamSource>.sortedForPanel(order: SourceSortOrder): List<StreamSource> = when (order) {
+    SourceSortOrder.RECOMMENDED -> this
+    SourceSortOrder.SIZE_DESC -> sortedByDescending { it.sizeBytes }
+    SourceSortOrder.SIZE_ASC -> sortedWith(compareBy<StreamSource> { it.sizeBytes <= 0L }.thenBy { it.sizeBytes })
+    SourceSortOrder.SEEDS_DESC -> sortedWith(
+        compareByDescending<StreamSource> { it.seeders ?: -1 }.thenByDescending { it.sizeBytes },
+    )
+}
+
 @Composable
 private fun SourcesPanel(
     state: DetailsUiState.Content,
@@ -1307,14 +1325,18 @@ private fun SourcesPanel(
     }
     val providers = (eligibleSources.map { it.provider }.filter { it.isNotBlank() } + unavailable.keys).distinct()
     var selectedProvider by remember { mutableStateOf<String?>(null) }
+    var sortOrder by remember { mutableStateOf(SourceSortOrder.RECOMMENDED) }
     val activeProvider = selectedProvider?.takeIf { it in providers }
     val sources = eligibleSources.filter { activeProvider == null || it.provider == activeProvider }
+    val displayedSources = remember(sources, sortOrder) { sources.sortedForPanel(sortOrder) }
     val visibleUnavailable = unavailable.filterKeys { activeProvider == null || it == activeProvider }
+    var initialFocused by remember(activeProvider, sortOrder) { mutableStateOf(false) }
     LaunchedEffect(providers) {
         if (selectedProvider != null && selectedProvider !in providers) selectedProvider = null
     }
-    LaunchedEffect(activeProvider, sources.firstOrNull()?.let { it.provider to it.id }) {
-        if (sources.isNotEmpty()) {
+    LaunchedEffect(activeProvider, sortOrder, displayedSources.isNotEmpty()) {
+        if (!initialFocused && displayedSources.isNotEmpty()) {
+            initialFocused = true
             listState.scrollToItem(0)
             firstRequester.requestFocusWithRetry()
         }
@@ -1365,14 +1387,20 @@ private fun SourcesPanel(
                     Text(
                         text = localizedStringResource(
                             StringsR.string.details_sources_filtered_count,
-                            sources.size,
+                            displayedSources.size,
                             allSources.size,
                         ),
                         color = Grey,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
                     )
+                    SourcePanelChip(
+                        text = localizedStringResource(sortOrder.labelRes),
+                        highlighted = sortOrder != SourceSortOrder.RECOMMENDED,
+                        onClick = { sortOrder = sortOrder.next() },
+                    )
                     if (!state.sourceExclusions.isEmpty || spanishOnly) {
+                        Spacer(Modifier.width(8.dp))
                         ShowAllChip(showAll = showAll, onClick = { showAll = !showAll })
                     }
                 }
@@ -1382,11 +1410,11 @@ private fun SourcesPanel(
                 SourcesState.Idle -> Text(localizedStringResource(StringsR.string.details_pick_an_episode_first), color = Grey)
                 SourcesState.Loading -> Text(localizedStringResource(StringsR.string.details_finding_sources), color = Grey)
                 is SourcesState.Error -> Text(s.message, color = Grey)
-                is SourcesState.Ready -> if (sources.isEmpty() && visibleUnavailable.isEmpty()) {
+                is SourcesState.Ready -> if (displayedSources.isEmpty() && visibleUnavailable.isEmpty()) {
                     Text(
                         when {
                             spanishOnly -> localizedStringResource(StringsR.string.details_no_spanish_sources_available_for_this_profile)
-                            !showAll && allSources.isNotEmpty() && sources.isEmpty() ->
+                            !showAll && allSources.isNotEmpty() && displayedSources.isEmpty() ->
                                 localizedStringResource(StringsR.string.details_no_sources_match_exclusions)
                             else -> localizedStringResource(StringsR.string.details_no_sources)
                         },
@@ -1398,7 +1426,7 @@ private fun SourcesPanel(
                         verticalArrangement = Arrangement.spacedBy(6.dp),
                         contentPadding = PaddingValues(bottom = 32.dp),
                     ) {
-                        itemsIndexed(sources, key = { _, source -> "${source.provider}:${source.id}" }) { index, source ->
+                        itemsIndexed(displayedSources, key = { _, source -> "${source.provider}:${source.id}" }) { index, source ->
                             SourceRow(
                                 source = source,
                                 blocked = isBlocked(source),

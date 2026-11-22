@@ -7,6 +7,7 @@ import com.shieldstream.tv.domain.ProfileRepository
 import com.shieldstream.tv.domain.SettingsRepository
 import com.shieldstream.tv.model.AppLanguage
 import com.shieldstream.tv.model.AudioCodec
+import com.shieldstream.tv.model.HdrPreference
 import com.shieldstream.tv.model.HdrType
 import com.shieldstream.tv.model.Profile
 import com.shieldstream.tv.model.Quality
@@ -110,6 +111,17 @@ class SettingsRepositoryImplTest {
 
         assertEquals(VideoFit.ZOOM, repository().videoFit.first())
         assertEquals(false, repository().switchFromPickedSource.first())
+    }
+
+    @Test
+    fun `hdr preference defaults to AUTOMATIC and persists across reloads`() = runTest {
+        assertEquals(HdrPreference.AUTOMATIC, repository().hdrPreference.first())
+
+        repository().setHdrPreference(HdrPreference.PREFER_SDR)
+        assertEquals(HdrPreference.PREFER_SDR, repository().hdrPreference.first())
+
+        repository().setHdrPreference(HdrPreference.IGNORE)
+        assertEquals(HdrPreference.IGNORE, repository().hdrPreference.first())
     }
 
     private fun repository(): SettingsRepositoryImpl {

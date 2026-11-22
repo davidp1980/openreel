@@ -985,7 +985,12 @@ class CatalogRepositoryImpl @Inject constructor(
         val UNSUPPORTED_CODEC = Regex("(?<![a-z0-9])(x266|vvc|h\\.?266)(?![a-z0-9])", RegexOption.IGNORE_CASE)
         val AV1_CODEC = Regex("(?<![a-z0-9])av1(?![a-z0-9])", RegexOption.IGNORE_CASE)
         val FLAG_TO_LANGUAGE = mapOf(
-            "ES" to "ES", "MX" to "LAT", "AR" to "LAT", "GB" to "EN", "US" to "EN",
+            "ES" to "ES",
+            "MX" to "LAT", "AR" to "LAT", "CO" to "LAT", "CL" to "LAT", "PE" to "LAT",
+            "VE" to "LAT", "EC" to "LAT", "UY" to "LAT", "PY" to "LAT", "BO" to "LAT",
+            "CR" to "LAT", "PA" to "LAT", "DO" to "LAT", "GT" to "LAT", "SV" to "LAT",
+            "HN" to "LAT", "NI" to "LAT", "PR" to "LAT", "CU" to "LAT",
+            "GB" to "EN", "US" to "EN",
             "IT" to "IT", "FR" to "FR", "DE" to "DE", "PT" to "PT", "BR" to "PT-BR",
             "RU" to "RU", "UA" to "UK", "JP" to "JA", "KR" to "KO", "CN" to "ZH",
             "IN" to "HI", "NL" to "NL", "PL" to "PL",

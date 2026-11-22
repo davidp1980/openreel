@@ -24,6 +24,7 @@ import com.shieldstream.tv.model.AppLanguage
 import com.shieldstream.tv.model.AudioCodec
 import com.shieldstream.tv.model.DeviceCapabilities
 import com.shieldstream.tv.model.DeviceOptimization
+import com.shieldstream.tv.model.HdrPreference
 import com.shieldstream.tv.model.HdrType
 import com.shieldstream.tv.model.MemoryProfile
 import com.shieldstream.tv.model.Quality
@@ -118,6 +119,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val providers by viewModel.providers.collectAsStateWithLifecycle()
     val sourceExclusions by viewModel.sourceExclusions.collectAsStateWithLifecycle()
+    val hdrPreference by viewModel.hdrPreference.collectAsStateWithLifecycle()
     val ithilState by viewModel.ithilState.collectAsStateWithLifecycle()
     val ithilUnlocked by viewModel.ithilUnlocked.collectAsStateWithLifecycle()
     val subtitleAppearance by viewModel.subtitleAppearance.collectAsStateWithLifecycle()
@@ -154,6 +156,8 @@ fun SettingsScreen(
                     onLanguage = { language -> viewModel.setLanguage(language) { restartApp(context) } },
                     providers = providers,
                     onToggleProvider = viewModel::toggleProvider,
+                    hdrPreference = hdrPreference,
+                    onHdrPreference = viewModel::setHdrPreference,
                     sourceExclusions = sourceExclusions,
                     onMaxSourceSize = viewModel::setMaxSourceSize,
                     onToggleQuality = viewModel::toggleExcludedQuality,
@@ -207,6 +211,8 @@ private fun SettingsList(
     onLanguage: (AppLanguage) -> Unit,
     providers: Set<SourceProvider>,
     onToggleProvider: (SourceProvider) -> Unit,
+    hdrPreference: HdrPreference,
+    onHdrPreference: (HdrPreference) -> Unit,
     sourceExclusions: SourceExclusions,
     onMaxSourceSize: (Long?) -> Unit,
     onToggleQuality: (Quality) -> Unit,
@@ -323,6 +329,9 @@ private fun SettingsList(
                     color = Muted,
                     modifier = Modifier.padding(start = 4.dp, top = 2.dp),
                 )
+            }
+            item(key = "hdr-priority") {
+                HdrPriorityCard(preference = hdrPreference, onChange = onHdrPreference)
             }
             item(key = "max-source-size") {
                 SourceSizeLimitCard(maxSizeBytes = sourceExclusions.maxSizeBytes, onChange = onMaxSourceSize)
@@ -1399,6 +1408,54 @@ private fun acceptedSummary(acceptedLabels: List<String>, acceptsAll: Boolean): 
     acceptedLabels.isEmpty() -> localizedStringResource(StringsR.string.settings_accepts_none)
     acceptsAll -> localizedStringResource(StringsR.string.settings_accepts_all)
     else -> localizedStringResource(StringsR.string.settings_accepts_values, acceptedLabels.joinToString(" · "))
+}
+
+@Composable
+private fun HdrPriorityCard(preference: HdrPreference, onChange: (HdrPreference) -> Unit) {
+    val options = HdrPreference.entries
+    fun shift(delta: Int) {
+        val next = (options.indexOf(preference) + delta).coerceIn(options.indices)
+        onChange(options[next])
+    }
+    FocusCard(
+        onClick = {
+            val next = (options.indexOf(preference) + 1) % options.size
+            onChange(options[next])
+        },
+        modifier = Modifier.onPreviewKeyEvent { event ->
+            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (event.key) {
+                Key.DirectionLeft -> { shift(-1); true }
+                Key.DirectionRight -> { shift(1); true }
+                else -> false
+            }
+        },
+    ) { _ ->
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    localizedStringResource(StringsR.string.settings_hdr_priority),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = Color.White,
+                )
+                Text(
+                    localizedStringResource(StringsR.string.settings_hdr_priority_summary),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Muted,
+                )
+            }
+            Spacer(Modifier.width(24.dp))
+            Row(
+                Modifier
+                    .background(Color.White.copy(alpha = 0.08f), AppShapes.Pill)
+                    .padding(4.dp),
+            ) {
+                SegmentOption(localizedStringResource(StringsR.string.settings_hdr_automatic), selected = preference == HdrPreference.AUTOMATIC)
+                SegmentOption(localizedStringResource(StringsR.string.settings_hdr_prefer_sdr), selected = preference == HdrPreference.PREFER_SDR)
+                SegmentOption(localizedStringResource(StringsR.string.settings_hdr_ignore), selected = preference == HdrPreference.IGNORE)
+            }
+        }
+    }
 }
 
 @Composable

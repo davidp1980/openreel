@@ -41,9 +41,10 @@ data class StreamSource(
 
 object SpanishAudio {
     private val explicitCastellano = Regex("""(?i)(\bcastellano\b|\bcast\b|\bes-es\b|\bespa[ñn]a\b)""")
-    private val castellano = Regex("""(?i)(\bcastellano\b|espa[ñn]ol|\besp\b|\bspa\b|\bcast\b)""")
-    private val spanishWord = Regex("""(?i)(\bspanish\b|\bdual\b)""")
-    private val latino = Regex("""(?i)(\blatino\b|\blat\b|\blatam\b|\bes-419\b|\bes-mx\b|\bmx\b)""")
+    private val castellano = Regex("""(?i)(\bcastellano\b|espa[ñn]ol|\besp\b|\bspa\b|\bcast\b|\bes-es\b|\bespa[ñn]a\b)""")
+    private val spanishWord = Regex("""(?i)\bspanish\b""")
+    private val latino = Regex("""(?i)(\blatino\b|\blat\b|\blatam\b|\blatin\b|\bes-419\b|\bes-mx\b|\bes-la\b|\besla\b|\besp-lat\b|\blat-eng\b|\bspa-lat\b|\bmx\b)""")
+    private val voOrDual = Regex("""(?i)(\bdual\b|\bmulti\b|\bvo\b|\bvose\b|\bingl[eé]s\b|\beng(lish)?\b)""")
     private val subsOnly = Regex("""(?i)(\bvose\b|\bvos\b|\bsubs?\.?\s*(esp|spa|spanish)\b)""")
 
     fun score(source: StreamSource): Int {
@@ -51,13 +52,17 @@ object SpanishAudio {
         val flagEs = "ES" in source.languages
         val flagLat = "LAT" in source.languages
         val hasExplicitCastellano = explicitCastellano.containsMatchIn(text)
-        val isLatinoOnly = (flagLat || latino.containsMatchIn(text)) && !hasExplicitCastellano && !flagEs
+        val hasLatinoText = latino.containsMatchIn(text)
+        val isLatinoOnly = (hasLatinoText && !hasExplicitCastellano) || (flagLat && !hasExplicitCastellano && !flagEs)
+        val hasCastellanoText = castellano.containsMatchIn(text)
+        val hasSpanishWord = spanishWord.containsMatchIn(text)
+        val hasVoOrDual = voOrDual.containsMatchIn(text) || source.languages.any { it != "ES" && it != "LAT" && it != "MULTI" }
         return when {
             isLatinoOnly -> -1
-            castellano.containsMatchIn(text) -> 3
-            subsOnly.containsMatchIn(text) && !spanishWord.containsMatchIn(text) -> 0
-            spanishWord.containsMatchIn(text) -> 2
-            flagEs && source.languages.size <= 3 -> 2
+            subsOnly.containsMatchIn(text) && !hasCastellanoText && !hasSpanishWord && !flagEs -> 0
+            (hasCastellanoText || (flagEs && source.languages.size <= 3)) && hasVoOrDual -> 4
+            hasCastellanoText || (flagEs && source.languages.size <= 3) -> 3
+            hasSpanishWord -> 2
             flagEs -> 1
             else -> 0
         }

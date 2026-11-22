@@ -14,6 +14,7 @@ import com.shieldstream.tv.domain.SettingsRepository
 import com.shieldstream.tv.domain.enabledSourceProviders
 import com.shieldstream.tv.model.AudioCodec
 import com.shieldstream.tv.model.DeviceProfile
+import com.shieldstream.tv.model.HdrPreference
 import com.shieldstream.tv.model.HdrType
 import com.shieldstream.tv.model.Quality
 import com.shieldstream.tv.model.SourceExclusions
@@ -229,6 +230,17 @@ class SettingsRepositoryImpl @Inject constructor(
         sourceExclusionsFlow.value = normalized
     }
 
+    private val hdrPreferenceFlow = MutableStateFlow(
+        runCatching { HdrPreference.valueOf(prefs.getString(KEY_HDR_PREFERENCE, null) ?: "") }
+            .getOrDefault(HdrPreference.AUTOMATIC),
+    )
+    override val hdrPreference: Flow<HdrPreference> = hdrPreferenceFlow
+
+    override suspend fun setHdrPreference(preference: HdrPreference) {
+        prefs.edit().putString(KEY_HDR_PREFERENCE, preference.name).apply()
+        hdrPreferenceFlow.value = preference
+    }
+
     override suspend fun setDebridService(service: DebridService) {
         prefs.edit().putString(KEY_DEBRID, service.name).apply()
         debridFlow.value = service
@@ -303,6 +315,7 @@ class SettingsRepositoryImpl @Inject constructor(
         const val KEY_EXCLUDED_HDR_TYPES = "source_excluded_hdr_types"
         const val KEY_EXCLUDED_AUDIO_CODECS = "source_excluded_audio_codecs"
         const val KEY_MAX_SOURCE_SIZE_BYTES = "source_max_size_bytes"
+        const val KEY_HDR_PREFERENCE = "hdr_preference"
         const val KEY_CUSTOM_M3U_URL = "custom_m3u_url"
         const val MIN_BUFFER = 20
         const val MAX_BUFFER = 100
