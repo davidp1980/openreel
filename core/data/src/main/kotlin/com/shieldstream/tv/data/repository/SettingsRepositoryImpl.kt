@@ -4,6 +4,7 @@ import com.shieldstream.tv.domain.SourceProvider
 import com.shieldstream.tv.model.AppLanguage
 import com.shieldstream.tv.model.Lang
 import com.shieldstream.tv.model.DeviceOptimization
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
 import com.shieldstream.tv.data.security.TokenStore
@@ -37,6 +38,16 @@ class SettingsRepositoryImpl @Inject constructor(
 ) : SettingsRepository {
 
     private val prefs = context.getSharedPreferences(AppLanguage.PREFS, Context.MODE_PRIVATE)
+    private val model = Build.MODEL.orEmpty()
+    private val manufacturer = Build.MANUFACTURER.orEmpty()
+    private val device = Build.DEVICE.orEmpty()
+    private val totalRamBytes = runCatching {
+        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return@runCatching 0L
+        ActivityManager.MemoryInfo().also(manager::getMemoryInfo).totalMem
+    }.getOrDefault(0L)
+    private val hasFireTvFeature = runCatching {
+        context.packageManager.hasSystemFeature("amazon.hardware.fire_tv")
+    }.getOrDefault(false)
 
     private val tokenFlow = MutableStateFlow(tokenStore.token)
     private val catalogProviderFlow = MutableStateFlow(
@@ -48,11 +59,22 @@ class SettingsRepositoryImpl @Inject constructor(
             .getOrDefault(DeviceOptimization.AUTOMATIC),
     )
     private val maxBufferFlow = MutableStateFlow(
-        prefs.getInt(KEY_BUFFER, DeviceProfile.defaultBufferSeconds(Build.MODEL)),
+        prefs.getInt(
+            KEY_BUFFER,
+            DeviceProfile.defaultBufferSeconds(model, manufacturer, device, totalRamBytes, hasFireTvFeature),
+        ),
     )
-    private val seekThumbnailsFlow = MutableStateFlow(prefs.getBoolean(KEY_SEEK_THUMBNAILS, true))
+    private val seekThumbnailsFlow = MutableStateFlow(
+        prefs.getBoolean(
+            KEY_SEEK_THUMBNAILS,
+            !DeviceProfile.isLowPowerBox(model, manufacturer, device, totalRamBytes, hasFireTvFeature),
+        ),
+    )
     private val lightweightUiFlow = MutableStateFlow(
-        prefs.getBoolean(KEY_LIGHTWEIGHT_UI, DeviceProfile.lightweightUiDefault(Build.MODEL)),
+        prefs.getBoolean(
+            KEY_LIGHTWEIGHT_UI,
+            DeviceProfile.lightweightUiDefault(model, manufacturer, device, totalRamBytes, hasFireTvFeature),
+        ),
     )
     override val lightweightUi: Flow<Boolean> = lightweightUiFlow
     override val lightweightUiEnabled: Boolean get() = lightweightUiFlow.value

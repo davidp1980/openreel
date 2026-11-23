@@ -12,7 +12,7 @@ class PlaybackPolicyProvider @Inject constructor(
 ) {
     val capabilities: DeviceCapabilities get() = deviceCapabilities.capabilities
 
-    fun automatic(): PlaybackPolicy = PlaybackPolicy.automatic(capabilities.heapLimitBytes)
+    fun automatic(): PlaybackPolicy = PlaybackPolicy.automatic(capabilities)
 
     fun resolve(
         optimization: DeviceOptimization,

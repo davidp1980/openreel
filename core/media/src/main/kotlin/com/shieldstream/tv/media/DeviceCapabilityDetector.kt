@@ -1,14 +1,18 @@
 package com.shieldstream.tv.media
 
+import android.app.ActivityManager
+import android.content.Context
 import android.media.MediaCodecList
 import android.os.Build
 import com.shieldstream.tv.model.DeviceCapabilities
 import com.shieldstream.tv.model.VideoCodec
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class DeviceCapabilityDetector @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val displayCapabilities: DisplayCapabilityDetector,
 ) {
     private val staticCapabilities by lazy {
@@ -17,11 +21,20 @@ class DeviceCapabilityDetector @Inject constructor(
             heapLimitBytes = Runtime.getRuntime().maxMemory(),
             hardwareVideoCodecs = hardwareVideoCodecs(),
             supportedHdr = emptySet(),
+            manufacturer = Build.MANUFACTURER.orEmpty(),
+            device = Build.DEVICE.orEmpty(),
+            totalRamBytes = totalPhysicalRamBytes(),
+            isFireTv = runCatching { context.packageManager.hasSystemFeature(FIRE_TV_FEATURE) }.getOrDefault(false),
         )
     }
 
     val capabilities: DeviceCapabilities
         get() = staticCapabilities.copy(supportedHdr = displayCapabilities.supportedHdrTypes())
+
+    private fun totalPhysicalRamBytes(): Long = runCatching {
+        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return@runCatching 0L
+        ActivityManager.MemoryInfo().also(manager::getMemoryInfo).totalMem
+    }.getOrDefault(0L)
 
     private fun hardwareVideoCodecs(): Set<VideoCodec> = runCatching {
         MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
@@ -39,6 +52,7 @@ class DeviceCapabilityDetector @Inject constructor(
     }
 
     private companion object {
+        const val FIRE_TV_FEATURE = "amazon.hardware.fire_tv"
         val SOFTWARE_DECODER_PREFIXES = listOf("omx.google.", "c2.android.", "c2.dav1d.", "c2.lib")
     }
 }

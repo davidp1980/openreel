@@ -5,6 +5,7 @@ import android.os.Build
 import android.util.Log
 import android.view.Display
 import androidx.annotation.RequiresApi
+import com.shieldstream.tv.model.DeviceProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -59,8 +60,9 @@ internal class EarlyDisplayModeRequest(
             selected
         } ?: return
 
+        val timeoutMs = if (isFireTvDevice()) FIRE_TV_SWITCH_TIMEOUT_MS else SWITCH_TIMEOUT_MS
         var stablePolls = 0
-        val settled = withTimeoutOrNull(SWITCH_TIMEOUT_MS) {
+        val settled = withTimeoutOrNull(timeoutMs) {
             while (stablePolls < REQUIRED_STABLE_POLLS) {
                 val current = withContext(Dispatchers.Main) { activity.window.decorView.display?.mode }
                 if (current != null && abs(current.refreshRate - target.refreshRate) <=
@@ -74,6 +76,17 @@ internal class EarlyDisplayModeRequest(
             }
         } != null
         Log.i(TAG, "WINDOW_MODE ${if (settled) "settled" else "timeout"} target=${target.refreshRate}")
+    }
+
+    private fun isFireTvDevice(): Boolean {
+        val hasFireFeature = runCatching {
+            activity.packageManager.hasSystemFeature("amazon.hardware.fire_tv")
+        }.getOrDefault(false)
+        return DeviceProfile.isFireTv(
+            model = Build.MODEL.orEmpty(),
+            manufacturer = Build.MANUFACTURER.orEmpty(),
+            hasFireTvFeature = hasFireFeature,
+        )
     }
 
     fun restore() {
@@ -91,6 +104,7 @@ internal class EarlyDisplayModeRequest(
     private companion object {
         const val TAG = "FrameRate"
         const val SWITCH_TIMEOUT_MS = 4_000L
+        const val FIRE_TV_SWITCH_TIMEOUT_MS = 1_500L
         const val POLL_INTERVAL_MS = 60L
         const val REQUIRED_STABLE_POLLS = 2
     }

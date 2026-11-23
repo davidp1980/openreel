@@ -1,5 +1,6 @@
 package com.shieldstream.tv.ui.di
 
+import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
 import coil.ImageLoader
@@ -20,19 +21,47 @@ object UiModule {
     @Provides
     @Singleton
     fun provideImageLoader(@ApplicationContext context: Context): ImageLoader {
-        val model = Build.MODEL
+        val model = Build.MODEL.orEmpty()
+        val manufacturer = Build.MANUFACTURER.orEmpty()
+        val device = Build.DEVICE.orEmpty()
+        val totalRamBytes = runCatching {
+            val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return@runCatching 0L
+            ActivityManager.MemoryInfo().also(manager::getMemoryInfo).totalMem
+        }.getOrDefault(0L)
+        val hasFireTvFeature = runCatching {
+            context.packageManager.hasSystemFeature("amazon.hardware.fire_tv")
+        }.getOrDefault(false)
+        val desiredDiskBytes = DeviceProfile.imageDiskCacheBytes(
+            model = model,
+            manufacturer = manufacturer,
+            device = device,
+            totalRamBytes = totalRamBytes,
+            hasFireTvFeature = hasFireTvFeature,
+        )
+        val diskBytes = DeviceProfile.capDiskCacheByFreeSpace(
+            desiredBytes = desiredDiskBytes,
+            availableBytes = runCatching { context.cacheDir.usableSpace }.getOrDefault(0L),
+        )
         return ImageLoader.Builder(context)
             // Fading every poster/backdrop adds animation and compositing work on low-power TV boxes.
             .crossfade(false)
             .memoryCache(
                 MemoryCache.Builder(context)
-                    .maxSizeBytes(DeviceProfile.imageMemoryCacheBytes(model))
+                    .maxSizeBytes(
+                        DeviceProfile.imageMemoryCacheBytes(
+                            model = model,
+                            manufacturer = manufacturer,
+                            device = device,
+                            totalRamBytes = totalRamBytes,
+                            hasFireTvFeature = hasFireTvFeature,
+                        ),
+                    )
                     .build(),
             )
             .diskCache(
                 DiskCache.Builder()
                     .directory(context.cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(DeviceProfile.imageDiskCacheBytes(model))
+                    .maxSizeBytes(diskBytes)
                     .build(),
             )
             .build()

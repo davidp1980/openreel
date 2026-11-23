@@ -18,7 +18,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.view.KeyEvent as AndroidKeyEvent
+import android.view.SurfaceView
 import android.view.View
+import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
@@ -79,6 +81,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -95,7 +98,7 @@ import com.shieldstream.tv.ui.component.requestFocusWithRetry
 import com.shieldstream.tv.ui.component.tvClickable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlin.math.abs
+import kotlin.math.roundToInt
 
 
 @OptIn(UnstableApi::class)
@@ -202,36 +205,24 @@ fun PlayerScreen(
     val thumbs = rememberSeekThumbnails(mediaUri, pqHdr, active = scrubbing && !isLive)
 
     var videoSize by remember(player) { mutableStateOf(player?.videoSize ?: VideoSize.UNKNOWN) }
+    var currentMediaUri by remember(player) { mutableStateOf(player?.currentMediaItem?.localConfiguration?.uri) }
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onVideoSizeChanged(size: VideoSize) {
                 videoSize = size
             }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                currentMediaUri = mediaItem?.localConfiguration?.uri
+            }
         }
         player?.addListener(listener)
         onDispose { player?.removeListener(listener) }
     }
-    val frameIs16x9 = videoSize.width > 0 && videoSize.height > 0 &&
-        abs(videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height - 16f / 9f) < 0.03f
-    val itemUri = player?.currentMediaItem?.localConfiguration?.uri
-    var letterboxScale by remember(itemUri) { mutableStateOf<Float?>(null) }
+    val frameIs16x9 = VideoFit.is16x9Frame(videoSize.width, videoSize.height, videoSize.pixelWidthHeightRatio)
+    var letterboxScale by remember(currentMediaUri) { mutableStateOf<Float?>(null) }
+    var letterboxMeasured by remember(currentMediaUri) { mutableStateOf(false) }
     val wantsNoBars = !isLive && videoFit != VideoFit.FIT
-    LaunchedEffect(itemUri, wantsNoBars, frameIs16x9, isLive) {
-        val p = player
-        if (isLive || !wantsNoBars || !frameIs16x9 || letterboxScale != null || itemUri == null || p == null) return@LaunchedEffect
-        val format = p.videoFormat
-        if (format?.codecs?.let { it.startsWith("dvhe.05") || it.startsWith("dvh1.05") } == true) {
-            letterboxScale = 1f
-            return@LaunchedEffect
-        }
-        val duration = snapshotFlow { playback.durationMs }.first { it > 0 }
-        delay(1_500)
-        val pq = format?.let {
-            it.colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 || it.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION
-        } ?: false
-        letterboxScale = LetterboxDetector.measureScale(context, itemUri, pq, duration)
-    }
-    val barScale = if (!isLive && frameIs16x9) letterboxScale ?: 1f else 1f
     LaunchedEffect(player) { scrubMs = null }
 
     val focusRequester = remember { FocusRequester() }
@@ -582,6 +573,17 @@ fun PlayerScreen(
                     isFocusable = false
                 }
             }
+            val videoFitContainer = remember(playerView) { VideoFitContainer(context, playerView) }
+            LaunchedEffect(currentMediaUri, wantsNoBars, frameIs16x9, videoSize.width, videoSize.height, playerView) {
+                if (isLive || !wantsNoBars || !frameIs16x9 || letterboxMeasured || videoSize.width <= 0) return@LaunchedEffect
+                snapshotFlow { playback.isPlaying || playback.positionMs > 0L }.first { it }
+                delay(400)
+                val surfaceView = playerView.videoSurfaceView as? SurfaceView
+                if (surfaceView != null) {
+                    letterboxScale = LetterboxDetector.measureScale(surfaceView)
+                }
+                letterboxMeasured = true
+            }
             DisposableEffect(playerView, exoPlayer) {
                 val matcher = ContentFrameRateMatcher(
                     playerView = playerView,
@@ -593,34 +595,31 @@ fun PlayerScreen(
                 onDispose { matcher.detach() }
             }
             AndroidView(
-                factory = { playerView },
-                update = { view ->
-                    view.player = exoPlayer
-                    if (!isLive) {
-                        view.resizeMode = when (videoFit) {
-                            VideoFit.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-                            VideoFit.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            VideoFit.STRETCH -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-                        }
-                        view.videoSurfaceView?.let { surface ->
-                            val (sx, sy) = when (videoFit) {
-                                VideoFit.FIT -> 1f to 1f
-                                VideoFit.ZOOM -> barScale to barScale
-                                VideoFit.STRETCH -> 1f to barScale
-                            }
-                            surface.scaleX = sx
-                            surface.scaleY = sy
-                        }
+                factory = { videoFitContainer },
+                update = { container ->
+                    playerView.player = exoPlayer
+                    val transform = if (isLive) {
+                        VideoFit.FIT.computeTransform(videoSize.width, videoSize.height, videoSize.pixelWidthHeightRatio, null)
                     } else {
-                        view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        view.videoSurfaceView?.let { surface ->
-                            surface.scaleX = 1f
-                            surface.scaleY = 1f
-                        }
+                        videoFit.computeTransform(videoSize.width, videoSize.height, videoSize.pixelWidthHeightRatio, letterboxScale)
                     }
+                    val targetResizeMode = when {
+                        transform.useFill -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                        transform.useZoom -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    }
+                    if (playerView.resizeMode != targetResizeMode) {
+                        playerView.resizeMode = targetResizeMode
+                        playerView.requestLayout()
+                    }
+                    playerView.videoSurfaceView?.let { surface ->
+                        surface.scaleX = 1f
+                        surface.scaleY = 1f
+                    }
+                    container.setVideoScale(transform.scaleX, transform.scaleY)
                     val evaluating = (externalSubs as? ExternalSubsState.Results)?.evaluating == true
-                    view.subtitleView?.applySubtitleAppearance(subtitleAppearance)
-                    view.subtitleView?.visibility = if (activeExternal != null || evaluating) View.GONE else View.VISIBLE
+                    playerView.subtitleView?.applySubtitleAppearance(subtitleAppearance)
+                    playerView.subtitleView?.visibility = if (activeExternal != null || evaluating) View.GONE else View.VISIBLE
                 },
                 modifier = Modifier.fillMaxSize(),
             )
@@ -1134,5 +1133,58 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
+}
+
+/**
+ * Resizes and centers [playerView] by actual layout bounds rather than [View.setScaleX]/[View.setScaleY],
+ * because Fire OS and several Android TV compositors ignore view transform scaling on [SurfaceView].
+ */
+@OptIn(UnstableApi::class)
+private class VideoFitContainer(
+    context: Context,
+    private val playerView: PlayerView,
+) : FrameLayout(context) {
+    private var scaleXFactor = 1f
+    private var scaleYFactor = 1f
+
+    init {
+        clipChildren = true
+        clipToPadding = true
+        addView(playerView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+
+    fun setVideoScale(sx: Float, sy: Float) {
+        val safeX = sx.coerceIn(1f, 2f)
+        val safeY = sy.coerceIn(1f, 2f)
+        if (scaleXFactor == safeX && scaleYFactor == safeY) return
+        scaleXFactor = safeX
+        scaleYFactor = safeY
+        requestLayout()
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        val h = MeasureSpec.getSize(heightMeasureSpec)
+        setMeasuredDimension(w, h)
+        val childW = (w * scaleXFactor).roundToInt().coerceAtLeast(w)
+        val childH = (h * scaleYFactor).roundToInt().coerceAtLeast(h)
+        playerView.measure(
+            MeasureSpec.makeMeasureSpec(childW, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(childH, MeasureSpec.EXACTLY),
+        )
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        val w = right - left
+        val h = bottom - top
+        val childW = playerView.measuredWidth
+        val childH = playerView.measuredHeight
+        val childLeft = (w - childW) / 2
+        val childTop = (h - childH) / 2
+        playerView.layout(childLeft, childTop, childLeft + childW, childTop + childH)
+        val extraX = ((childW - w) / 2).coerceAtLeast(0)
+        val extraY = ((childH - h) / 2).coerceAtLeast(0)
+        playerView.subtitleView?.setPadding(extraX, extraY, extraX, extraY)
+    }
 }
 

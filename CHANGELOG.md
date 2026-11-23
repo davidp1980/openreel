@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.52] - 2026-11-23
+
+### Fixed
+
+- **Video format scaling on Fire OS & Android TV (`VideoFitContainer`, `VideoFit`):** replaced `SurfaceView` view-transform `scaleX`/`scaleY` (ignored or clipped by Fire OS and several TV compositors) with real centered layout-bound resizing while keeping embedded subtitle padding inside the visible viewport.
+- **Fast letterbox detection (`LetterboxDetector`):** switched from opening a second hardware `MediaCodec` + remote HTTP seeks to `PixelCopy` on the active `SurfaceView` with a predictable `4:3` (`1.333x`) fallback for 16:9 letterboxed frames when measurement is unavailable (e.g., DRM or Dolby Vision), tracked media transitions reactively, and reduced `TracksPanel` backdrop opacity to `0.72` so format changes are visible live.
+
+### Added
+
+- **Per-device optimization profiles (`DeviceProfile`, `PlaybackPolicy`):** added `ULTRA_CONSTRAINED`, `CONSTRAINED`, and `FULL` tiers for Amazon Fire TV (`AFT*` / `Amazon` 1–2 GB) and Chromecast with Google TV (HD `boreal` / 4K `sabrina`), using physical RAM (`ActivityManager.MemoryInfo.totalMem`) so `largeHeap` no longer triggers full-profile buffers or seek thumbnails on 1–2 GB sticks.
+- **Platform-specific optimizations:** capped Coil disk cache by available storage (20% of free space, 32 MiB floor), disabled Android TV Watch Next channel/program syncing on Fire OS, shortened Fire TV display-mode switch timeout to `1.5 s`, and halved seek-thumbnail memory cache (`12 MiB`) on constrained devices.
+
 ## [1.0.51] - 2026-11-22
 
 ### Added
