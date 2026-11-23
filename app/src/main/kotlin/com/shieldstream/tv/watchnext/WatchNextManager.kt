@@ -14,7 +14,6 @@ import com.shieldstream.tv.domain.ProfileRepository
 import com.shieldstream.tv.domain.WatchProgressRepository
 import com.shieldstream.tv.domain.mapConcurrent
 import com.shieldstream.tv.model.CatalogItem
-import com.shieldstream.tv.model.DeviceProfile
 import com.shieldstream.tv.model.HomeFilter
 import com.shieldstream.tv.model.MediaType
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -39,20 +38,10 @@ class WatchNextManager @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
-    private val watchNextSupported: Boolean by lazy {
-        val hasFireTvFeature = runCatching {
-            context.packageManager.hasSystemFeature("amazon.hardware.fire_tv")
-        }.getOrDefault(false)
-        DeviceProfile.supportsWatchNext(
-            model = Build.MODEL.orEmpty(),
-            manufacturer = Build.MANUFACTURER.orEmpty(),
-            hasFireTvFeature = hasFireTvFeature,
-        )
-    }
 
     @OptIn(FlowPreview::class)
     fun start() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || syncJob != null || !watchNextSupported) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || syncJob != null) return
         scope.launch { runCatching { continueWatchingChannel.ensureChannel() } }
         syncJob = scope.launch {
             combine(profiles.active, watchProgress.progress) { profile, progress ->
@@ -71,7 +60,7 @@ class WatchNextManager @Inject constructor(
     }
 
     fun onForeground() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || !watchNextSupported) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         scope.launch { runCatching { continueWatchingChannel.requestBrowsable() } }
     }
 

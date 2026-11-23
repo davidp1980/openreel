@@ -28,10 +28,6 @@ data class DeviceCapabilities(
     val heapLimitBytes: Long,
     val hardwareVideoCodecs: Set<VideoCodec>,
     val supportedHdr: Set<HdrType>,
-    val manufacturer: String = "",
-    val device: String = "",
-    val totalRamBytes: Long = 0L,
-    val isFireTv: Boolean = false,
 )
 
 data class PlaybackPolicy(
@@ -47,39 +43,6 @@ data class PlaybackPolicy(
     companion object {
         private const val MIB = 1024 * 1024
         private const val CONSTRAINED_HEAP_LIMIT_BYTES = 256L * MIB
-
-        fun automatic(capabilities: DeviceCapabilities): PlaybackPolicy {
-            val tier = DeviceProfile.tier(
-                model = capabilities.model,
-                manufacturer = capabilities.manufacturer,
-                device = capabilities.device,
-                totalRamBytes = capabilities.totalRamBytes,
-                hasFireTvFeature = capabilities.isFireTv,
-            )
-            return when {
-                tier == DeviceTier.ULTRA_CONSTRAINED -> PlaybackPolicy(
-                    minBufferSeconds = 20,
-                    maxBufferSeconds = 30,
-                    targetBufferBytes = 32 * MIB,
-                    bufferForPlaybackMs = 2_500,
-                    bufferForPlaybackAfterRebufferMs = 4_000,
-                    backBufferMs = 5_000,
-                    seekThumbnails = false,
-                    memoryProfile = MemoryProfile.CONSTRAINED,
-                )
-                tier == DeviceTier.CONSTRAINED || capabilities.heapLimitBytes <= CONSTRAINED_HEAP_LIMIT_BYTES -> PlaybackPolicy(
-                    minBufferSeconds = 30,
-                    maxBufferSeconds = 40,
-                    targetBufferBytes = 40 * MIB,
-                    bufferForPlaybackMs = 3_000,
-                    bufferForPlaybackAfterRebufferMs = 5_000,
-                    backBufferMs = 5_000,
-                    seekThumbnails = false,
-                    memoryProfile = MemoryProfile.CONSTRAINED,
-                )
-                else -> automatic(capabilities.heapLimitBytes)
-            }
-        }
 
         fun automatic(heapLimitBytes: Long): PlaybackPolicy = if (heapLimitBytes <= CONSTRAINED_HEAP_LIMIT_BYTES) {
             PlaybackPolicy(

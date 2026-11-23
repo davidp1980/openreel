@@ -114,7 +114,7 @@ fun TracksPanel(
     Box(
         Modifier
             .fillMaxSize()
-            .background(if (showAppearance) Color.Transparent else Color.Black.copy(alpha = 0.72f))
+            .background(if (showAppearance) Color.Transparent else Color.Black.copy(alpha = 0.85f))
             .onBackKey(enabled = showExternal || showAppearance) {
                 if (showExternal) {
                     showExternal = false

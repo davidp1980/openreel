@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.53] - 2026-11-23
+
+### Changed
+
+- Reverted the 1.0.52 Fire TV / Chromecast profile and video scaling changes to restore 1.0.51 performance and behavior.
+
 ## [1.0.52] - 2026-11-23
 
 ### Fixed

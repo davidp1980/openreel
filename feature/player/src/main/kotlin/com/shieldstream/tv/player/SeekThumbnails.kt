@@ -2,14 +2,11 @@ package com.shieldstream.tv.player
 
 import com.shieldstream.tv.ui.theme.AppColors
 import com.shieldstream.tv.ui.theme.AppShapes
-import android.app.ActivityManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
-import android.os.Build
 import android.util.Log
 import android.util.LruCache
-import com.shieldstream.tv.model.DeviceProfile
 import androidx.annotation.OptIn
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -72,24 +69,9 @@ internal const val THUMB_SLOT_MS = 10_000L
 
 private const val THUMB_HEIGHT_PX = 216
 
-private const val IDLE_RELEASE_MS = 30_000L
+private const val CACHE_BYTES = 24 * 1024 * 1024
 
-private fun seekThumbnailCacheBytes(context: Context): Int {
-    val totalRamBytes = runCatching {
-        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return@runCatching 0L
-        ActivityManager.MemoryInfo().also(manager::getMemoryInfo).totalMem
-    }.getOrDefault(0L)
-    val hasFireTvFeature = runCatching {
-        context.packageManager.hasSystemFeature("amazon.hardware.fire_tv")
-    }.getOrDefault(false)
-    return DeviceProfile.seekThumbnailsCacheBytes(
-        model = Build.MODEL.orEmpty(),
-        manufacturer = Build.MANUFACTURER.orEmpty(),
-        device = Build.DEVICE.orEmpty(),
-        totalRamBytes = totalRamBytes,
-        hasFireTvFeature = hasFireTvFeature,
-    )
-}
+private const val IDLE_RELEASE_MS = 30_000L
 
 @OptIn(UnstableApi::class)
 internal class SeekThumbnails(context: Context, uri: Uri, pqHdr: Boolean) {
@@ -102,7 +84,7 @@ internal class SeekThumbnails(context: Context, uri: Uri, pqHdr: Boolean) {
             .build(),
     )
 
-    private val cache = object : LruCache<Long, Bitmap>(seekThumbnailCacheBytes(context)) {
+    private val cache = object : LruCache<Long, Bitmap>(CACHE_BYTES) {
         override fun sizeOf(key: Long, value: Bitmap): Int = value.byteCount
     }
     private val failed = HashSet<Long>()
