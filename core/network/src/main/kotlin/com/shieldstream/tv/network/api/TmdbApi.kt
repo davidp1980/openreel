@@ -1,12 +1,14 @@
 package com.shieldstream.tv.network.api
 
 import com.shieldstream.tv.model.Lang
+import com.shieldstream.tv.network.dto.TmdbContentRatingsDto
 import com.shieldstream.tv.network.dto.TmdbExternalIdsDto
 import com.shieldstream.tv.network.dto.TmdbKeywordDto
 import com.shieldstream.tv.network.dto.TmdbMovieDetailDto
 import com.shieldstream.tv.network.dto.TmdbMovieDto
 import com.shieldstream.tv.network.dto.TmdbPaginated
 import com.shieldstream.tv.network.dto.TmdbPersonDto
+import com.shieldstream.tv.network.dto.TmdbReleaseDatesDto
 import com.shieldstream.tv.network.dto.TmdbSearchResponse
 import com.shieldstream.tv.network.dto.TmdbSearchResultDto
 import com.shieldstream.tv.network.dto.TmdbSeasonDto
@@ -181,4 +183,16 @@ interface TmdbApi {
         @Path("id") id: Int,
         @Query("api_key") key: String,
     ): TmdbExternalIdsDto
+
+    @GET("3/movie/{id}/release_dates")
+    suspend fun movieReleaseDates(
+        @Path("id") id: Int,
+        @Query("api_key") key: String,
+    ): TmdbReleaseDatesDto
+
+    @GET("3/tv/{id}/content_ratings")
+    suspend fun tvContentRatings(
+        @Path("id") id: Int,
+        @Query("api_key") key: String,
+    ): TmdbContentRatingsDto
 }

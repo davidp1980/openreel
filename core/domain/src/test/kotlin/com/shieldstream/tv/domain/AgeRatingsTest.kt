@@ -63,4 +63,13 @@ class AgeRatingsTest {
         assertNull(Profile("a", "Adult", 0, kids = false, maxAge = 12).ageLimit)
         assertNull(Profile("k", "Kids", 0, kids = true).ageLimit)
     }
+
+    @Test
+    fun `kids US movie discover certification tightens to G below age 7`() {
+        assertEquals("G", AgeRatings.maxKidsUsMovieCertification(0))
+        assertEquals("PG", AgeRatings.maxKidsUsMovieCertification(7))
+        assertEquals("PG", AgeRatings.maxKidsUsMovieCertification(12))
+        assertEquals("PG", AgeRatings.maxKidsUsMovieCertification(16))
+        assertEquals("PG", AgeRatings.maxKidsUsMovieCertification(null))
+    }
 }

@@ -19,6 +19,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import com.shieldstream.tv.domain.StreamResults
 import com.shieldstream.tv.domain.ApiService
 import android.util.Log
+import com.shieldstream.tv.domain.AgeRatings
 import com.shieldstream.tv.domain.CatalogCacheRefresher
 import com.shieldstream.tv.domain.CatalogRepository
 import com.shieldstream.tv.domain.mapConcurrent
@@ -85,6 +86,49 @@ class CatalogRepositoryImpl @Inject constructor(
 ) : CatalogRepository, CatalogCacheRefresher {
 
     private val kids: Boolean get() = profiles.active.value.kids
+    private val ageLimit: Int? get() = profiles.active.value.ageLimit
+
+    private class CachedAge(val at: Long, val minimumAge: Int?)
+    private val minimumAgeCache = ConcurrentHashMap<String, CachedAge>()
+    private val minimumAgeLocks = ConcurrentHashMap<String, Mutex>()
+
+    private fun ageCacheKey(type: MediaType, id: String): String =
+        "${Lang.current.code}:${type.name}:$id"
+
+    private fun cacheMinimumAge(type: MediaType, id: String, minimumAge: Int?) {
+        minimumAgeCache[ageCacheKey(type, id)] = CachedAge(System.currentTimeMillis(), minimumAge)
+    }
+
+    private suspend fun minimumAgeOf(type: MediaType, id: String): Int? {
+        val numericId = id.toIntOrNull() ?: return null
+        val cacheKey = ageCacheKey(type, id)
+        return minimumAgeLocks.getOrPut(cacheKey) { Mutex() }.withLock {
+            minimumAgeCache[cacheKey]
+                ?.takeIf { System.currentTimeMillis() - it.at < AGE_CACHE_MS }
+                ?.let { return@withLock it.minimumAge }
+            val fetched = runCatching {
+                when (type) {
+                    MediaType.MOVIE -> tmdb.movieReleaseDates(numericId, key).minimumAge()
+                    MediaType.TV -> tmdb.tvContentRatings(numericId, key).minimumAge()
+                }
+            }
+            fetched.getOrNull().also { age ->
+                if (fetched.isSuccess) {
+                    minimumAgeCache[cacheKey] = CachedAge(System.currentTimeMillis(), age)
+                }
+            }
+        }
+    }
+
+    private suspend fun isAllowedByAge(type: MediaType, id: String, limit: Int?): Boolean =
+        limit == null || AgeRatings.allows(limit, minimumAgeOf(type, id))
+
+    private suspend fun List<CatalogItem>.filterAllowedByAge(limit: Int?): List<CatalogItem> {
+        if (limit == null || isEmpty()) return this
+        return mapConcurrent(concurrency = 4) { item ->
+            if (isAllowedByAge(item.type, item.id, limit)) item else null
+        }.filterNotNull()
+    }
 
     private class Cached(val at: Long, val value: Any)
     private val homeCache = ConcurrentHashMap<String, Cached>()
@@ -157,8 +201,9 @@ class CatalogRepositoryImpl @Inject constructor(
 
     override suspend fun getFeatured(filter: HomeFilter): List<FeaturedItem> =
         if (kids) {
-            cachedHome("featured_kids_${filter.name}", HomeDiskCache::readFeatured, HomeDiskCache::writeFeatured) {
-                extras.kidsFeatured(filter)
+            val limit = ageLimit
+            cachedHome("featured_kids_${filter.name}_age_${limit ?: "any"}", HomeDiskCache::readFeatured, HomeDiskCache::writeFeatured) {
+                extras.kidsFeatured(filter, limit)
             }
         } else {
             cachedHome("featured_${filter.name}", HomeDiskCache::readFeatured, HomeDiskCache::writeFeatured) {
@@ -166,8 +211,15 @@ class CatalogRepositoryImpl @Inject constructor(
             }
         }
 
-    override suspend fun getCategoryRows(category: Category, filter: HomeFilter): List<CatalogRow> =
-        if (kids && category !in Category.KIDS_SAFE) emptyList() else extras.categoryRows(category, filter)
+    override suspend fun getCategoryRows(category: Category, filter: HomeFilter): List<CatalogRow> {
+        if (kids && category !in Category.KIDS_SAFE) return emptyList()
+        val rows = extras.categoryRows(category, filter)
+        val limit = ageLimit ?: return rows
+        return rows.mapNotNull { row ->
+            val allowed = row.items.filterAllowedByAge(limit)
+            if (allowed.isEmpty()) null else row.copy(items = allowed)
+        }
+    }
 
     private val key: String get() = store.tmdbKey.orEmpty()
 
@@ -181,17 +233,18 @@ class CatalogRepositoryImpl @Inject constructor(
     override suspend fun getHome(filter: HomeFilter, maxItems: Int): List<CatalogRow> {
         val pages = ((maxItems + TMDB_PAGE_SIZE - 1) / TMDB_PAGE_SIZE).coerceIn(1, MAX_HOME_PAGES)
         return if (kids) {
-            cachedHome("home_kids_${filter.name}_p$pages", HomeDiskCache::readRows, HomeDiskCache::writeRows) {
-                loadHome(kidsRowsFor(filter), pages)
+            val limit = ageLimit
+            cachedHome("home_kids_${filter.name}_age_${limit ?: "any"}_p$pages", HomeDiskCache::readRows, HomeDiskCache::writeRows) {
+                loadHome(kidsRowsFor(filter), pages, limit)
             }
         } else {
             cachedHome("home_${filter.name}_p$pages", HomeDiskCache::readRows, HomeDiskCache::writeRows) {
-                loadHome(rowsFor(filter), pages)
+                loadHome(rowsFor(filter), pages, ageLimit = null)
             }
         }
     }
 
-    private suspend fun loadHome(specs: List<RowSpec>, pages: Int): List<CatalogRow> = coroutineScope {
+    private suspend fun loadHome(specs: List<RowSpec>, pages: Int, ageLimit: Int? = null): List<CatalogRow> = coroutineScope {
         if (key.isBlank()) throw IllegalStateException(texts.get(StringsR.string.data_tmdb_key_missing_add_it_in_settings))
         specs
             .map { spec ->
@@ -206,6 +259,7 @@ class CatalogRepositoryImpl @Inject constructor(
                             .flatten()
                             .distinctBy { it.key }
                             .filter { it.posterUrl != null }
+                            .filterAllowedByAge(ageLimit)
                         val limited = if (spec.style == RowStyle.TOP10) items.take(10) else items
                         CatalogRow(spec.id, spec.title, limited, spec.style)
                     }.getOrNull()
@@ -401,14 +455,21 @@ class CatalogRepositoryImpl @Inject constructor(
         kidsTv(mapOf("without_genres" to KIDS_DOC_EXCLUDED_TV_GENRES) + extra, genres = genres)
 
     override suspend fun trending(): List<CatalogItem> =
-        if (kids) kidsMovies(mapOf()).take(20)
-        else tmdb.trendingAll(key).results.mapNotNull { it.toCatalogItemOrNull() }.filter { it.posterUrl != null }
+        if (kids) {
+            kidsMovies(mapOf())
+                .filter { it.posterUrl != null }
+                .filterAllowedByAge(ageLimit)
+                .take(20)
+        } else {
+            tmdb.trendingAll(key).results.mapNotNull { it.toCatalogItemOrNull() }.filter { it.posterUrl != null }
+        }
 
     override suspend fun search(query: String): List<CatalogItem> =
         tmdb.search(key, query).results
             .filter { !kids || it.genre_ids.any { g -> g in KIDS_GENRES } }
             .mapNotNull { it.toCatalogItemOrNull() } // descarta personas
             .filter { it.posterUrl != null }
+            .filterAllowedByAge(ageLimit)
 
     private suspend fun kidsMovies(extra: Map<String, String>, genres: String = "16|10751"): List<CatalogItem> =
         tmdb.discoverMovieQuery(
@@ -416,7 +477,7 @@ class CatalogRepositoryImpl @Inject constructor(
             mapOf(
                 "with_genres" to genres,
                 "certification_country" to "US",
-                "certification.lte" to "PG",
+                "certification.lte" to AgeRatings.maxKidsUsMovieCertification(ageLimit),
                 "include_adult" to "false",
                 "sort_by" to "popularity.desc",
             ) + extra,
@@ -477,39 +538,40 @@ class CatalogRepositoryImpl @Inject constructor(
 
     override suspend fun getRecommendations(item: CatalogItem): List<CatalogItem> {
         val id = item.id.toIntOrNull() ?: return emptyList()
-        val cacheKey = "${Lang.current.code}:$kids:${item.key}"
+        val limit = ageLimit
+        val cacheKey = "${Lang.current.code}:$kids:${limit ?: "any"}:${item.key}"
         return recommendationLocks.getOrPut(cacheKey) { Mutex() }.withLock {
             recommendationCache[cacheKey]?.takeIf { System.currentTimeMillis() - it.at < RECOMMENDATIONS_CACHE_MS }?.let { cached ->
                 @Suppress("UNCHECKED_CAST")
                 return@withLock cached.value as List<CatalogItem>
             }
             val loaded = when (item.type) {
-                MediaType.MOVIE -> movieRecommendations(id)
-                MediaType.TV -> tvRecommendations(id)
+                MediaType.MOVIE -> movieRecommendations(id, limit)
+                MediaType.TV -> tvRecommendations(id, limit)
             }
             recommendationCache[cacheKey] = Cached(System.currentTimeMillis(), loaded)
             loaded
         }
     }
 
-    private suspend fun movieRecommendations(id: Int): List<CatalogItem> {
+    private suspend fun movieRecommendations(id: Int, limit: Int?): List<CatalogItem> {
         val recommended = tmdb.movieRecommendations(id, key).results.toMovieRecommendationItems()
         val candidates = if (recommended.size < MIN_RECOMMENDATIONS) {
             recommended + tmdb.movieSimilar(id, key).results.toMovieRecommendationItems()
         } else {
             recommended
         }
-        return candidates.distinctBy { it.key }.take(MAX_RECOMMENDATIONS)
+        return candidates.distinctBy { it.key }.filterAllowedByAge(limit).take(MAX_RECOMMENDATIONS)
     }
 
-    private suspend fun tvRecommendations(id: Int): List<CatalogItem> {
+    private suspend fun tvRecommendations(id: Int, limit: Int?): List<CatalogItem> {
         val recommended = tmdb.tvRecommendations(id, key).results.toTvRecommendationItems()
         val candidates = if (recommended.size < MIN_RECOMMENDATIONS) {
             recommended + tmdb.tvSimilar(id, key).results.toTvRecommendationItems()
         } else {
             recommended
         }
-        return candidates.distinctBy { it.key }.take(MAX_RECOMMENDATIONS)
+        return candidates.distinctBy { it.key }.filterAllowedByAge(limit).take(MAX_RECOMMENDATIONS)
     }
 
     private fun List<TmdbMovieDto>.toMovieRecommendationItems(): List<CatalogItem> =
@@ -544,7 +606,7 @@ class CatalogRepositoryImpl @Inject constructor(
                 latestEpisode = d.last_episode_to_air?.toEpisode(),
                 nextEpisode = d.next_episode_to_air?.toEpisode(),
                 cast = d.credits?.cast.orEmpty().sortedBy { it.order }.take(20).map { it.toCastMember() },
-                minimumAge = d.content_ratings.minimumAge(),
+                minimumAge = d.content_ratings.minimumAge().also { cacheMinimumAge(MediaType.TV, item.id, it) },
             )
         } else {
             val d = tmdb.movieDetails(id, key, append = MOVIE_DETAILS_APPEND)
@@ -561,7 +623,7 @@ class CatalogRepositoryImpl @Inject constructor(
                 genres = d.genres.map { it.name },
                 tagline = d.tagline?.takeIf { it.isNotBlank() },
                 cast = d.credits?.cast.orEmpty().sortedBy { it.order }.take(20).map { it.toCastMember() },
-                minimumAge = d.release_dates.minimumAge(),
+                minimumAge = d.release_dates.minimumAge().also { cacheMinimumAge(MediaType.MOVIE, item.id, it) },
             )
         }
     }
@@ -571,6 +633,8 @@ class CatalogRepositoryImpl @Inject constructor(
     private val itemCache = ConcurrentHashMap<String, CatalogItem>()
 
     override suspend fun getItem(type: MediaType, id: String): CatalogItem? {
+        val limit = ageLimit
+        if (limit != null && !isAllowedByAge(type, id, limit)) return null
         cachedItem(type, id)?.let { return it }
         // A show's item comes from the same TMDB request as its airing data. Sharing it fills both
         // caches with one download; separately, Home and My List fetched every show twice.
@@ -634,6 +698,8 @@ class CatalogRepositoryImpl @Inject constructor(
 
     override suspend fun getShowAiring(id: String): ShowAiring? {
         val tmdbId = id.toIntOrNull() ?: return null
+        val limit = ageLimit
+        if (limit != null && !isAllowedByAge(MediaType.TV, id, limit)) return null
         return airingLocks.getOrPut(id) { Mutex() }.withLock {
             airingCache[id]?.takeIf { System.currentTimeMillis() - it.at < AIRING_CACHE_MS }?.let { return@withLock it.value }
             val d = tmdb.tvDetails(tmdbId, key, append = "external_ids")
@@ -1118,6 +1184,7 @@ private const val MOVIE_DETAILS_APPEND = "images,translations,credits,release_da
 private const val TV_DETAILS_APPEND = "images,external_ids,translations,credits,content_ratings"
 
 private const val AIRING_CACHE_MS = 6 * 60 * 60 * 1000L
+private const val AGE_CACHE_MS = 24 * 60 * 60 * 1000L
 
 // Persisted item metadata older than this is refetched in the background while content plays.
 private const val ITEM_REFRESH_MS = 24 * 60 * 60 * 1000L

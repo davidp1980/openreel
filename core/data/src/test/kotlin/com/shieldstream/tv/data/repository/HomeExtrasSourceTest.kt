@@ -7,9 +7,14 @@ import com.shieldstream.tv.model.Category
 import com.shieldstream.tv.model.HomeFilter
 import com.shieldstream.tv.model.MediaType
 import com.shieldstream.tv.network.api.TmdbApi
+import com.shieldstream.tv.network.dto.TmdbContentRatingDto
+import com.shieldstream.tv.network.dto.TmdbContentRatingsDto
 import com.shieldstream.tv.network.dto.TmdbMovieDetailDto
 import com.shieldstream.tv.network.dto.TmdbMovieDto
 import com.shieldstream.tv.network.dto.TmdbPaginated
+import com.shieldstream.tv.network.dto.TmdbReleaseCountryDto
+import com.shieldstream.tv.network.dto.TmdbReleaseDateDto
+import com.shieldstream.tv.network.dto.TmdbReleaseDatesDto
 import com.shieldstream.tv.network.dto.TmdbSearchResultDto
 import com.shieldstream.tv.network.dto.TmdbTvDetailDto
 import com.shieldstream.tv.network.dto.TmdbTvDto
@@ -178,5 +183,88 @@ class HomeExtrasSourceTest {
             assertEquals("80,27,53,10768", query["without_genres"])
             assertEquals("false", query["include_adult"])
         }
+    }
+
+    @Test
+    fun `kids featured filters out age-prohibited and unrated items and tightens discover certification below 7`() = runTest {
+        val tmdb = mockk<TmdbApi>()
+        val store = mockk<TokenStore> { every { tmdbKey } returns "tmdb-key" }
+        val movieQueries = mutableListOf<Map<String, String>>()
+
+        coEvery { tmdb.discoverMovieQuery("tmdb-key", capture(movieQueries)) } returns TmdbPaginated(
+            results = listOf(
+                TmdbMovieDto(id = 501, title = "Blocked 13", poster_path = "/p501.jpg", backdrop_path = "/b501.jpg"),
+                TmdbMovieDto(id = 502, title = "Unrated", poster_path = "/p502.jpg", backdrop_path = "/b502.jpg"),
+                TmdbMovieDto(id = 503, title = "Allowed 7", poster_path = "/p503.jpg", backdrop_path = "/b503.jpg"),
+                TmdbMovieDto(id = 504, title = "Allowed G", poster_path = "/p504.jpg", backdrop_path = "/b504.jpg"),
+            ),
+        )
+        coEvery { tmdb.discoverTvQuery("tmdb-key", any()) } returns TmdbPaginated(
+            results = listOf(
+                TmdbTvDto(id = 601, name = "Blocked TV-14", poster_path = "/p601.jpg", backdrop_path = "/b601.jpg"),
+                TmdbTvDto(id = 602, name = "Allowed TV-Y", poster_path = "/p602.jpg", backdrop_path = "/b602.jpg"),
+            ),
+        )
+        coEvery { tmdb.movieDetails(any(), any(), any(), any()) } answers {
+            when (val id = firstArg<Int>()) {
+                501 -> TmdbMovieDetailDto(
+                    id = id,
+                    title = "Blocked 13",
+                    poster_path = "/p$id.jpg",
+                    backdrop_path = "/b$id.jpg",
+                    release_dates = TmdbReleaseDatesDto(listOf(TmdbReleaseCountryDto("US", listOf(TmdbReleaseDateDto("PG-13"))))),
+                )
+                502 -> TmdbMovieDetailDto(
+                    id = id,
+                    title = "Unrated",
+                    poster_path = "/p$id.jpg",
+                    backdrop_path = "/b$id.jpg",
+                )
+                503 -> TmdbMovieDetailDto(
+                    id = id,
+                    title = "Allowed 7",
+                    poster_path = "/p$id.jpg",
+                    backdrop_path = "/b$id.jpg",
+                    release_dates = TmdbReleaseDatesDto(listOf(TmdbReleaseCountryDto("US", listOf(TmdbReleaseDateDto("PG"))))),
+                )
+                else -> TmdbMovieDetailDto(
+                    id = id,
+                    title = "Allowed G",
+                    poster_path = "/p$id.jpg",
+                    backdrop_path = "/b$id.jpg",
+                    release_dates = TmdbReleaseDatesDto(listOf(TmdbReleaseCountryDto("US", listOf(TmdbReleaseDateDto("G"))))),
+                )
+            }
+        }
+        coEvery { tmdb.tvDetails(any(), any(), any(), any()) } answers {
+            when (val id = firstArg<Int>()) {
+                601 -> TmdbTvDetailDto(
+                    id = id,
+                    name = "Blocked TV-14",
+                    poster_path = "/p$id.jpg",
+                    backdrop_path = "/b$id.jpg",
+                    content_ratings = TmdbContentRatingsDto(listOf(TmdbContentRatingDto("US", "TV-14"))),
+                )
+                else -> TmdbTvDetailDto(
+                    id = id,
+                    name = "Allowed TV-Y",
+                    poster_path = "/p$id.jpg",
+                    backdrop_path = "/b$id.jpg",
+                    content_ratings = TmdbContentRatingsDto(listOf(TmdbContentRatingDto("US", "TV-Y"))),
+                )
+            }
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val source = HomeExtrasSource(tmdb, context, store, mockk<Texts>(relaxed = true))
+
+        val age7Featured = source.kidsFeatured(HomeFilter.ALL, ageLimit = 7)
+        assertEquals(setOf("503", "504", "602"), age7Featured.map { it.item.id }.toSet())
+        assertEquals("PG", movieQueries.first()["certification.lte"])
+
+        movieQueries.clear()
+        val age0Featured = source.kidsFeatured(HomeFilter.MOVIES, ageLimit = 0)
+        assertEquals(listOf("504"), age0Featured.map { it.item.id })
+        assertEquals("G", movieQueries.first()["certification.lte"])
     }
 }

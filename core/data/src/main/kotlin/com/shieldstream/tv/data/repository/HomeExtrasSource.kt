@@ -13,6 +13,8 @@ import com.shieldstream.tv.model.HomeFilter
 import com.shieldstream.tv.model.MediaType
 import com.shieldstream.tv.network.api.TmdbApi
 import com.shieldstream.tv.data.security.TokenStore
+import com.shieldstream.tv.domain.AgeRatings
+import com.shieldstream.tv.domain.mapConcurrent
 import com.shieldstream.tv.network.dto.TmdbImagesDto
 import com.shieldstream.tv.network.dto.TmdbSearchResultDto
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -55,21 +57,22 @@ class HomeExtrasSource @Inject constructor(
         }
     }
 
-    suspend fun kidsFeatured(filter: HomeFilter): List<FeaturedItem> = coroutineScope {
+    suspend fun kidsFeatured(filter: HomeFilter, ageLimit: Int? = null): List<FeaturedItem> = coroutineScope {
         val isDocs = filter == HomeFilter.DOCUMENTARIES
+        val certMax = AgeRatings.maxKidsUsMovieCertification(ageLimit)
         val movieParams = if (isDocs) {
             mapOf(
                 "with_genres" to "99",
                 "without_genres" to KIDS_DOC_EXCLUDED_MOVIE_GENRES,
                 "certification_country" to "US",
-                "certification.lte" to "PG",
+                "certification.lte" to certMax,
                 "include_adult" to "false",
             )
         } else {
             mapOf(
                 "with_genres" to "16|10751",
                 "certification_country" to "US",
-                "certification.lte" to "PG",
+                "certification.lte" to certMax,
                 "include_adult" to "false",
             )
         }
@@ -92,33 +95,84 @@ class HomeExtrasSource @Inject constructor(
         val m = movies.await().filter { it.backdrop_path != null }.map { Pick(MediaType.MOVIE, it.id, FeaturedBadge.POPULAR) }
         val s = shows.await().filter { it.backdrop_path != null }.map { Pick(MediaType.TV, it.id, FeaturedBadge.POPULAR) }
         val best = bestMovies.await().filter { it.backdrop_path != null }.map { Pick(MediaType.MOVIE, it.id, FeaturedBadge.ACCLAIMED) }
-        val picks = ArrayList<Pick>()
-        fun add(p: Pick?, badge: FeaturedBadge) {
-            if (p != null && picks.none { it.type == p.type && it.id == p.id }) picks += p.copy(badge = badge)
+        val mm = m.toMutableList(); val ss = s.toMutableList(); val bb = best.toMutableList()
+
+        if (ageLimit == null) {
+            val picks = ArrayList<Pick>()
+            fun add(p: Pick?, badge: FeaturedBadge) {
+                if (p != null && picks.none { it.type == p.type && it.id == p.id }) picks += p.copy(badge = badge)
+            }
+            fun MutableList<Pick>.next() = firstOrNull { p -> picks.none { it.type == p.type && it.id == p.id } }
+            when (filter) {
+                HomeFilter.ALL, HomeFilter.DOCUMENTARIES -> {
+                    add(mm.next(), FeaturedBadge.POPULAR)
+                    add(ss.next(), FeaturedBadge.SERIES_NOW)
+                    add(mm.next(), FeaturedBadge.MOVIE_NOW)
+                    add(bb.next(), FeaturedBadge.ACCLAIMED)
+                    add(ss.next(), FeaturedBadge.RISING)
+                }
+                HomeFilter.MOVIES -> {
+                    add(mm.next(), FeaturedBadge.POPULAR)
+                    add(mm.next(), FeaturedBadge.MOVIE_NOW)
+                    add(bb.next(), FeaturedBadge.ACCLAIMED)
+                    add(mm.next(), FeaturedBadge.RISING)
+                }
+                HomeFilter.TV -> {
+                    add(ss.next(), FeaturedBadge.POPULAR)
+                    add(ss.next(), FeaturedBadge.SERIES_NOW)
+                    add(ss.next(), FeaturedBadge.RISING)
+                }
+            }
+            return@coroutineScope picks.map { pick -> async { runCatching { loadFeatured(pick) }.getOrNull() } }.awaitAll().filterNotNull()
         }
-        fun MutableList<Pick>.next() = firstOrNull { p -> picks.none { it.type == p.type && it.id == p.id } }
-        val mm = m.toMutableList(); val ss = s.toMutableList()
-        when (filter) {
+
+        val pool = ArrayList<Pick>()
+        fun enqueue(list: MutableList<Pick>, badge: FeaturedBadge) {
+            val next = list.firstOrNull { p -> pool.none { it.type == p.type && it.id == p.id } } ?: return
+            list.remove(next)
+            pool += next.copy(badge = badge)
+        }
+        val targetCount = when (filter) {
             HomeFilter.ALL, HomeFilter.DOCUMENTARIES -> {
-                add(mm.next(), FeaturedBadge.POPULAR)
-                add(ss.next(), FeaturedBadge.SERIES_NOW)
-                add(mm.next(), FeaturedBadge.MOVIE_NOW)
-                add(best.toMutableList().next(), FeaturedBadge.ACCLAIMED)
-                add(ss.next(), FeaturedBadge.RISING)
+                enqueue(mm, FeaturedBadge.POPULAR)
+                enqueue(ss, FeaturedBadge.SERIES_NOW)
+                enqueue(mm, FeaturedBadge.MOVIE_NOW)
+                enqueue(bb, FeaturedBadge.ACCLAIMED)
+                enqueue(ss, FeaturedBadge.RISING)
+                repeat(4) {
+                    enqueue(mm, FeaturedBadge.POPULAR)
+                    enqueue(ss, FeaturedBadge.SERIES_NOW)
+                    enqueue(bb, FeaturedBadge.ACCLAIMED)
+                }
+                5
             }
             HomeFilter.MOVIES -> {
-                add(mm.next(), FeaturedBadge.POPULAR)
-                add(mm.next(), FeaturedBadge.MOVIE_NOW)
-                add(best.toMutableList().next(), FeaturedBadge.ACCLAIMED)
-                add(mm.next(), FeaturedBadge.RISING)
+                enqueue(mm, FeaturedBadge.POPULAR)
+                enqueue(mm, FeaturedBadge.MOVIE_NOW)
+                enqueue(bb, FeaturedBadge.ACCLAIMED)
+                repeat(5) {
+                    enqueue(mm, FeaturedBadge.RISING)
+                    enqueue(bb, FeaturedBadge.ACCLAIMED)
+                }
+                4
             }
             HomeFilter.TV -> {
-                add(ss.next(), FeaturedBadge.POPULAR)
-                add(ss.next(), FeaturedBadge.SERIES_NOW)
-                add(ss.next(), FeaturedBadge.RISING)
+                enqueue(ss, FeaturedBadge.POPULAR)
+                enqueue(ss, FeaturedBadge.SERIES_NOW)
+                repeat(6) {
+                    enqueue(ss, FeaturedBadge.RISING)
+                }
+                3
             }
         }
-        picks.map { pick -> async { runCatching { loadFeatured(pick) }.getOrNull() } }.awaitAll().filterNotNull()
+        pool.take(MAX_KIDS_FEATURED_CANDIDATES)
+            .mapConcurrent(concurrency = 4) { pick ->
+                runCatching { loadFeaturedWithAge(pick) }.getOrNull()
+            }
+            .filterNotNull()
+            .filter { (_, minAge) -> AgeRatings.allows(ageLimit, minAge) }
+            .map { it.first }
+            .take(targetCount)
     }
 
     private fun allWeekPickKeys(week: String): Set<String> =
@@ -354,13 +408,15 @@ class HomeExtrasSource @Inject constructor(
         picks.take(5)
     }
 
-    private suspend fun loadFeatured(pick: Pick): FeaturedItem? {
-        return if (pick.type == MediaType.MOVIE) loadFeaturedMovie(pick) else loadFeaturedSeries(pick)
-    }
+    private suspend fun loadFeatured(pick: Pick): FeaturedItem? = loadFeaturedWithAge(pick)?.first
 
-    private suspend fun loadFeaturedMovie(pick: Pick): FeaturedItem? {
+    private suspend fun loadFeaturedWithAge(pick: Pick): Pair<FeaturedItem, Int?>? =
+        if (pick.type == MediaType.MOVIE) loadFeaturedMovie(pick) else loadFeaturedSeries(pick)
+
+    private suspend fun loadFeaturedMovie(pick: Pick): Pair<FeaturedItem, Int?>? {
         val d = tmdb.movieDetails(pick.id, key, append = "images,release_dates")
-        return FeaturedItem(
+        val minAge = d.release_dates.minimumAge()
+        val item = FeaturedItem(
             item = CatalogItem(
                 id = pick.id.toString(),
                 imdbId = d.imdb_id,
@@ -378,14 +434,16 @@ class HomeExtrasSource @Inject constructor(
             logoUrl = pickLogo(d.images),
             genre = d.genres.firstOrNull()?.name,
             durationText = d.runtime?.takeIf { it > 0 }?.let { formatRuntime(it) },
-            certification = certificationLabel(d.release_dates.minimumAge()),
+            certification = certificationLabel(minAge),
         )
+        return item to minAge
     }
 
-    private suspend fun loadFeaturedSeries(pick: Pick): FeaturedItem? {
+    private suspend fun loadFeaturedSeries(pick: Pick): Pair<FeaturedItem, Int?>? {
         val d = tmdb.tvDetails(pick.id, key, append = "images,content_ratings,external_ids")
         val seasons = d.seasons.count { it.season_number > 0 }.takeIf { it > 0 } ?: d.number_of_seasons
-        return FeaturedItem(
+        val minAge = d.content_ratings.minimumAge()
+        val item = FeaturedItem(
             item = CatalogItem(
                 id = pick.id.toString(),
                 imdbId = d.external_ids?.imdb_id,
@@ -403,8 +461,9 @@ class HomeExtrasSource @Inject constructor(
             logoUrl = pickLogo(d.images),
             genre = d.genres.firstOrNull()?.name,
             durationText = seasons.takeIf { it > 0 }?.let { if (it == 1) texts.get(StringsR.string.data_1_season) else texts.get(StringsR.string.data_season_count, it) },
-            certification = certificationLabel(d.content_ratings.minimumAge()),
+            certification = certificationLabel(minAge),
         )
+        return item to minAge
     }
 
     private fun readPicks(raw: String?, week: String): List<Pick>? {
@@ -650,6 +709,7 @@ class HomeExtrasSource @Inject constructor(
     private fun isoDate(date: Date): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(date)
 
     private companion object {
+        const val MAX_KIDS_FEATURED_CANDIDATES = 15
         const val KIDS_DOC_EXCLUDED_MOVIE_GENRES = "80,27,53,10752"
         const val KIDS_DOC_EXCLUDED_TV_GENRES = "80,27,53,10768"
         val POPULAR = mapOf("sort_by" to "popularity.desc", "vote_count.gte" to "30")

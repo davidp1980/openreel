@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.56] - 2026-11-28
+
+### Fixed
+
+- **Kids profile age-limit cover filtering (`CatalogRepositoryImpl`, `HomeExtrasSource`, `AgeRatings`):** enforce `profile.ageLimit` across featured billboards, Home/Movies/TV/Documentaries rows, category rows, trending, search, recommendations, and item/airing lookups so age-prohibited or unrated covers never appear in age-restricted kids profiles, tighten TMDB discover `certification.lte` to `G` below age 7, and key featured/home/recommendation caches by `ageLimit`.
+
 ## [1.0.55] - 2026-11-28
 
 ### Added

@@ -38,5 +38,9 @@ object AgeRatings {
     fun allows(limit: Int?, minimumAge: Int?): Boolean =
         limit == null || (minimumAge != null && minimumAge <= limit)
 
+    /** Tightest US movie certification to pass to TMDB discover for a Kids profile. */
+    fun maxKidsUsMovieCertification(limit: Int?): String =
+        if (limit != null && limit < 7) "G" else "PG"
+
     private val ALL_AUDIENCES = setOf("A", "TP", "APTA", "G", "TV-G", "TV-Y", "ALL")
 }
