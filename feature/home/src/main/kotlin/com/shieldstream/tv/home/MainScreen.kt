@@ -70,6 +70,7 @@ fun MainScreen(
     val filter = when (tab) {
         NavTab.TV -> HomeFilter.TV
         NavTab.MOVIES -> HomeFilter.MOVIES
+        NavTab.DOCUMENTARIES -> HomeFilter.DOCUMENTARIES
         else -> HomeFilter.ALL
     }
     val episodeCenter: EpisodeCenterViewModel = hiltViewModel()
@@ -80,7 +81,7 @@ fun MainScreen(
         if (tab == NavTab.EPISODES) episodeCenter.activate()
     }
     val focusNav: () -> Unit = { runCatching { navRequester.requestFocus() } }
-    val isBrowseTab = tab == NavTab.HOME || tab == NavTab.MOVIES || tab == NavTab.TV
+    val isBrowseTab = tab == NavTab.HOME || tab == NavTab.MOVIES || tab == NavTab.TV || tab == NavTab.DOCUMENTARIES
     val showTopNav = !isBrowseTab || homeTopNavVisible || navFocused || revealTopNav
     val focusOrRevealNav: () -> Unit = { if (showTopNav) focusNav() else revealTopNav = true }
     LaunchedEffect(revealTopNav) { if (revealTopNav) navRequester.requestFocusWithRetry() }

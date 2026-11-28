@@ -52,6 +52,7 @@ enum class NavTab(val icon: ImageVector) {
     HOME(LineIcons.Home),
     MOVIES(LineIcons.Movie),
     TV(LineIcons.Tv),
+    DOCUMENTARIES(LineIcons.Documentary),
     LIVE(LineIcons.LiveTv),
     EPISODES(LineIcons.Episodes),
     CALENDAR(LineIcons.Calendar),
@@ -65,6 +66,7 @@ private val NavTab.labelResource: Int
         NavTab.HOME -> StringsR.string.common_home
         NavTab.MOVIES -> StringsR.string.common_movies
         NavTab.TV -> StringsR.string.common_tv_shows
+        NavTab.DOCUMENTARIES -> StringsR.string.common_documentaries
         NavTab.LIVE -> StringsR.string.common_live_tv
         NavTab.EPISODES -> StringsR.string.common_episodes
         NavTab.CALENDAR -> StringsR.string.calendar_title

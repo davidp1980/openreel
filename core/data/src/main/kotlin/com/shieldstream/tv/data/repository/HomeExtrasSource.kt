@@ -56,15 +56,34 @@ class HomeExtrasSource @Inject constructor(
     }
 
     suspend fun kidsFeatured(filter: HomeFilter): List<FeaturedItem> = coroutineScope {
-        val movieParams = mapOf(
-            "with_genres" to "16|10751",
-            "certification_country" to "US",
-            "certification.lte" to "PG",
-            "include_adult" to "false",
-        )
-        val tvParams = mapOf("with_genres" to "10762", "include_adult" to "false")
+        val isDocs = filter == HomeFilter.DOCUMENTARIES
+        val movieParams = if (isDocs) {
+            mapOf(
+                "with_genres" to "99",
+                "without_genres" to KIDS_DOC_EXCLUDED_MOVIE_GENRES,
+                "certification_country" to "US",
+                "certification.lte" to "PG",
+                "include_adult" to "false",
+            )
+        } else {
+            mapOf(
+                "with_genres" to "16|10751",
+                "certification_country" to "US",
+                "certification.lte" to "PG",
+                "include_adult" to "false",
+            )
+        }
+        val tvParams = if (isDocs) {
+            mapOf(
+                "with_genres" to "99,10751",
+                "without_genres" to KIDS_DOC_EXCLUDED_TV_GENRES,
+                "include_adult" to "false",
+            )
+        } else {
+            mapOf("with_genres" to "10762", "include_adult" to "false")
+        }
         val popular = mapOf("sort_by" to "popularity.desc")
-        val acclaimed = mapOf("sort_by" to "vote_average.desc", "vote_count.gte" to "300")
+        val acclaimed = mapOf("sort_by" to "vote_average.desc", "vote_count.gte" to if (isDocs) "50" else "300")
         val wantMovies = filter != HomeFilter.TV
         val wantTv = filter != HomeFilter.MOVIES
         val movies = async { if (wantMovies) runCatching { tmdb.discoverMovieQuery(key, movieParams + popular).results }.getOrDefault(emptyList()) else emptyList() }
@@ -80,7 +99,7 @@ class HomeExtrasSource @Inject constructor(
         fun MutableList<Pick>.next() = firstOrNull { p -> picks.none { it.type == p.type && it.id == p.id } }
         val mm = m.toMutableList(); val ss = s.toMutableList()
         when (filter) {
-            HomeFilter.ALL -> {
+            HomeFilter.ALL, HomeFilter.DOCUMENTARIES -> {
                 add(mm.next(), FeaturedBadge.POPULAR)
                 add(ss.next(), FeaturedBadge.SERIES_NOW)
                 add(mm.next(), FeaturedBadge.MOVIE_NOW)
@@ -111,6 +130,7 @@ class HomeExtrasSource @Inject constructor(
         HomeFilter.ALL -> chooseAllPicks()
         HomeFilter.MOVIES -> chooseMoviePicks(excludedKeys = allWeekPickKeys(week))
         HomeFilter.TV -> chooseTvPicks(excludedKeys = allWeekPickKeys(week))
+        HomeFilter.DOCUMENTARIES -> chooseDocumentaryPicks(excludedKeys = allWeekPickKeys(week))
     }
 
     private suspend fun chooseAllPicks(): List<Pick> = coroutineScope {
@@ -217,6 +237,120 @@ class HomeExtrasSource @Inject constructor(
         pick(topRated.sortedByDescending { it.vote_average }, FeaturedBadge.ACCLAIMED) { it.vote_count >= 150 }
         if (picks.size < 5) pick(topRated, FeaturedBadge.ACCLAIMED)
         if (picks.isEmpty()) pick(trending + popular + topRated, FeaturedBadge.POPULAR, allowExcluded = true)
+        picks.take(5)
+    }
+
+    private suspend fun chooseDocumentaryPicks(excludedKeys: Set<String>): List<Pick> = coroutineScope {
+        val popMovieDeferred = async {
+            runCatching {
+                tmdb.discoverMovieQuery(
+                    key,
+                    mapOf(
+                        "with_genres" to "99",
+                        "include_adult" to "false",
+                        "sort_by" to "popularity.desc",
+                        "vote_count.gte" to "50",
+                    ),
+                ).results
+            }.getOrDefault(emptyList())
+        }
+        val popTvDeferred = async {
+            runCatching {
+                tmdb.discoverTvQuery(
+                    key,
+                    mapOf(
+                        "with_genres" to "99",
+                        "include_adult" to "false",
+                        "sort_by" to "popularity.desc",
+                        "vote_count.gte" to "20",
+                    ),
+                ).results
+            }.getOrDefault(emptyList())
+        }
+        val topMovieDeferred = async {
+            runCatching {
+                tmdb.discoverMovieQuery(
+                    key,
+                    mapOf(
+                        "with_genres" to "99",
+                        "include_adult" to "false",
+                        "sort_by" to "vote_average.desc",
+                        "vote_count.gte" to "200",
+                    ),
+                ).results
+            }.getOrDefault(emptyList())
+        }
+        val topTvDeferred = async {
+            runCatching {
+                tmdb.discoverTvQuery(
+                    key,
+                    mapOf(
+                        "with_genres" to "99",
+                        "include_adult" to "false",
+                        "sort_by" to "vote_average.desc",
+                        "vote_count.gte" to "50",
+                    ),
+                ).results
+            }.getOrDefault(emptyList())
+        }
+        val popMovies = popMovieDeferred.await().filter { it.backdrop_path != null && it.poster_path != null }
+        val popTv = popTvDeferred.await().filter { it.backdrop_path != null && it.poster_path != null }
+        val topMovies = topMovieDeferred.await().filter { it.backdrop_path != null && it.poster_path != null }
+        val topTv = topTvDeferred.await().filter { it.backdrop_path != null && it.poster_path != null }
+
+        val today = isoDate(Date())
+        val recentLimit = isoDate(Date(System.currentTimeMillis() - 60L * 24 * 3600 * 1000))
+        val used = HashSet<String>()
+        val picks = ArrayList<Pick>()
+        fun pickMovie(
+            candidates: List<com.shieldstream.tv.network.dto.TmdbMovieDto>,
+            badge: FeaturedBadge,
+            allowExcluded: Boolean = false,
+            predicate: (com.shieldstream.tv.network.dto.TmdbMovieDto) -> Boolean = { true },
+        ): Boolean {
+            val chosen = candidates.firstOrNull {
+                val pickKey = "MOVIE:${it.id}"
+                pickKey !in used && (allowExcluded || pickKey !in excludedKeys) && predicate(it)
+            } ?: return false
+            used.add("MOVIE:${chosen.id}")
+            picks += Pick(MediaType.MOVIE, chosen.id, badge)
+            return true
+        }
+        fun pickTv(
+            candidates: List<com.shieldstream.tv.network.dto.TmdbTvDto>,
+            badge: FeaturedBadge,
+            allowExcluded: Boolean = false,
+            predicate: (com.shieldstream.tv.network.dto.TmdbTvDto) -> Boolean = { true },
+        ): Boolean {
+            val chosen = candidates.firstOrNull {
+                val pickKey = "TV:${it.id}"
+                pickKey !in used && (allowExcluded || pickKey !in excludedKeys) && predicate(it)
+            } ?: return false
+            used.add("TV:${chosen.id}")
+            picks += Pick(MediaType.TV, chosen.id, badge)
+            return true
+        }
+
+        if (!pickMovie(popMovies, FeaturedBadge.NEW) { (it.release_date.orEmpty()) in recentLimit..today }) {
+            pickTv(popTv, FeaturedBadge.NEW) { (it.first_air_date.orEmpty()) in recentLimit..today }
+        }
+        pickMovie(popMovies, FeaturedBadge.MOVIE_NOW)
+        pickTv(popTv, FeaturedBadge.SERIES_NOW)
+        if (!pickMovie(popMovies, FeaturedBadge.POPULAR)) {
+            pickTv(popTv, FeaturedBadge.POPULAR)
+        }
+        if (!pickMovie(topMovies.sortedByDescending { it.vote_average }, FeaturedBadge.ACCLAIMED)) {
+            if (!pickTv(topTv.sortedByDescending { it.vote_average }, FeaturedBadge.ACCLAIMED)) {
+                if (!pickMovie(topMovies, FeaturedBadge.ACCLAIMED, allowExcluded = true)) {
+                    pickTv(topTv, FeaturedBadge.ACCLAIMED, allowExcluded = true)
+                }
+            }
+        }
+        if (picks.isEmpty()) {
+            if (!pickMovie(popMovies + topMovies, FeaturedBadge.POPULAR, allowExcluded = true)) {
+                pickTv(popTv + topTv, FeaturedBadge.POPULAR, allowExcluded = true)
+            }
+        }
         picks.take(5)
     }
 
@@ -360,7 +494,7 @@ class HomeExtrasSource @Inject constructor(
     }
 
     private fun acclaimedRows(filter: HomeFilter): List<Pair<String, suspend () -> List<CatalogItem>>> = when (filter) {
-        HomeFilter.ALL -> listOf(
+        HomeFilter.ALL, HomeFilter.DOCUMENTARIES -> listOf(
             texts.get(StringsR.string.data_top_rated) to suspend {
                 mix(movies(Query(), acclaimed(500)), series(Query(), acclaimed(150)))
             },
@@ -383,7 +517,7 @@ class HomeExtrasSource @Inject constructor(
     }
 
     private fun classicRows(filter: HomeFilter): List<Pair<String, suspend () -> List<CatalogItem>>> {
-        if (filter == HomeFilter.TV) return emptyList()
+        if (filter == HomeFilter.TV || filter == HomeFilter.DOCUMENTARIES) return emptyList()
         return listOf(
             texts.get(StringsR.string.data_classic_movies) to suspend { movies(Query(), CLASSIC_MOVIES) },
             texts.get(StringsR.string.data_more_classic_movies) to suspend { movies(Query(), CLASSIC_MOVIES, page = 2) },
@@ -435,7 +569,7 @@ class HomeExtrasSource @Inject constructor(
                 when (filter) {
                     HomeFilter.MOVIES -> movies(movie, POPULAR)
                     HomeFilter.TV -> series(tv, POPULAR)
-                    HomeFilter.ALL -> mix(movies(movie, POPULAR), series(tv, POPULAR))
+                    HomeFilter.ALL, HomeFilter.DOCUMENTARIES -> mix(movies(movie, POPULAR), series(tv, POPULAR))
                 }
             }
         }
@@ -516,6 +650,8 @@ class HomeExtrasSource @Inject constructor(
     private fun isoDate(date: Date): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(date)
 
     private companion object {
+        const val KIDS_DOC_EXCLUDED_MOVIE_GENRES = "80,27,53,10752"
+        const val KIDS_DOC_EXCLUDED_TV_GENRES = "80,27,53,10768"
         val POPULAR = mapOf("sort_by" to "popularity.desc", "vote_count.gte" to "30")
         val CLASSIC_MOVIES = mapOf(
             "sort_by" to "popularity.desc",

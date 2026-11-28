@@ -61,7 +61,10 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
 import java.util.Collections
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -313,7 +316,89 @@ class CatalogRepositoryImpl @Inject constructor(
             RowSpec("t_animation", texts.get(StringsR.string.data_animation)) { page -> tmdb.discoverTv(key, "16", page = page).results.map { it.toCatalogItem() } },
             RowSpec("t_top", texts.get(StringsR.string.data_critically_acclaimed)) { page -> tmdb.topRatedTv(key, page = page).results.map { it.toCatalogItem() } },
         )
+        HomeFilter.DOCUMENTARIES -> {
+            val today = todayIso()
+            listOf(
+                RowSpec("d_top10", texts.get(StringsR.string.data_top_10_documentaries), RowStyle.TOP10) { page ->
+                    mixRowItems(
+                        { docMovies(mapOf("vote_count.gte" to "50", "page" to page.toString())) },
+                        { docTv(mapOf("vote_count.gte" to "20", "page" to page.toString())) },
+                    )
+                },
+                RowSpec("d_movies", texts.get(StringsR.string.data_documentary_movies)) { page ->
+                    docMovies(mapOf("vote_count.gte" to "50", "page" to page.toString()))
+                },
+                RowSpec("d_series", texts.get(StringsR.string.data_docuseries)) { page ->
+                    docTv(mapOf("vote_count.gte" to "20", "page" to page.toString()))
+                },
+                RowSpec("d_true_crime", texts.get(StringsR.string.category_true_crime)) { page ->
+                    mixRowItems(
+                        { docMovies(mapOf("vote_count.gte" to "20", "page" to page.toString()), genres = "99,80") },
+                        { docTv(mapOf("vote_count.gte" to "10", "page" to page.toString()), genres = "99,80") },
+                    )
+                },
+                RowSpec("d_history", texts.get(StringsR.string.data_history_society)) { page ->
+                    mixRowItems(
+                        { docMovies(mapOf("vote_count.gte" to "20", "page" to page.toString()), genres = "99,36") },
+                        { docTv(mapOf("vote_count.gte" to "10", "page" to page.toString()), genres = "99,10768") },
+                    )
+                },
+                RowSpec("d_music", texts.get(StringsR.string.data_music_culture)) { page ->
+                    docMovies(mapOf("vote_count.gte" to "20", "page" to page.toString()), genres = "99,10402")
+                },
+                RowSpec("d_recent", texts.get(StringsR.string.data_recent_documentaries)) { page ->
+                    mixRowItems(
+                        {
+                            docMovies(
+                                mapOf(
+                                    "sort_by" to "primary_release_date.desc",
+                                    "primary_release_date.lte" to today,
+                                    "vote_count.gte" to "15",
+                                    "page" to page.toString(),
+                                ),
+                            )
+                        },
+                        {
+                            docTv(
+                                mapOf(
+                                    "sort_by" to "first_air_date.desc",
+                                    "first_air_date.lte" to today,
+                                    "vote_count.gte" to "10",
+                                    "page" to page.toString(),
+                                ),
+                            )
+                        },
+                    )
+                },
+                RowSpec("d_acclaimed", texts.get(StringsR.string.data_critically_acclaimed)) { page ->
+                    mixRowItems(
+                        { docMovies(mapOf("sort_by" to "vote_average.desc", "vote_count.gte" to "200", "page" to page.toString())) },
+                        { docTv(mapOf("sort_by" to "vote_average.desc", "vote_count.gte" to "50", "page" to page.toString())) },
+                    )
+                },
+            )
+        }
     }
+
+    private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+    private suspend fun docMovies(extra: Map<String, String>, genres: String = "99"): List<CatalogItem> =
+        tmdb.discoverMovieQuery(
+            key,
+            mapOf("with_genres" to genres, "include_adult" to "false", "sort_by" to "popularity.desc") + extra,
+        ).results.map { it.toCatalogItem() }
+
+    private suspend fun docTv(extra: Map<String, String>, genres: String = "99"): List<CatalogItem> =
+        tmdb.discoverTvQuery(
+            key,
+            mapOf("with_genres" to genres, "include_adult" to "false", "sort_by" to "popularity.desc") + extra,
+        ).results.map { it.toCatalogItem() }
+
+    private suspend fun kidsDocMovies(extra: Map<String, String>, genres: String = "99"): List<CatalogItem> =
+        kidsMovies(mapOf("without_genres" to KIDS_DOC_EXCLUDED_MOVIE_GENRES) + extra, genres = genres)
+
+    private suspend fun kidsDocTv(extra: Map<String, String>, genres: String = "99,10751"): List<CatalogItem> =
+        kidsTv(mapOf("without_genres" to KIDS_DOC_EXCLUDED_TV_GENRES) + extra, genres = genres)
 
     override suspend fun trending(): List<CatalogItem> =
         if (kids) kidsMovies(mapOf()).take(20)
@@ -361,6 +446,29 @@ class CatalogRepositoryImpl @Inject constructor(
             HomeFilter.ALL -> listOf(movies[0], shows[0], movies[1], shows[1], movies[2], movies[3], shows[2])
             HomeFilter.MOVIES -> movies
             HomeFilter.TV -> shows
+            HomeFilter.DOCUMENTARIES -> listOf(
+                RowSpec("k_doc_movies", texts.get(StringsR.string.data_kids_documentaries)) { page ->
+                    kidsDocMovies(mapOf("page" to page.toString()))
+                },
+                RowSpec("k_doc_family", texts.get(StringsR.string.data_family_documentaries)) { page ->
+                    mixRowItems(
+                        { kidsDocMovies(mapOf("page" to page.toString()), genres = "99,10751") },
+                        { kidsDocTv(mapOf("page" to page.toString()), genres = "99,10751") },
+                    )
+                },
+                RowSpec("k_doc_series", texts.get(StringsR.string.data_kids_docuseries)) { page ->
+                    kidsDocTv(mapOf("page" to page.toString()), genres = "99,10762")
+                },
+                RowSpec("k_doc_all_ages", texts.get(StringsR.string.data_all_ages_documentaries)) { page ->
+                    kidsDocMovies(mapOf("certification.lte" to "G", "page" to page.toString()))
+                },
+                RowSpec("k_doc_top", texts.get(StringsR.string.data_top_rated)) { page ->
+                    mixRowItems(
+                        { kidsDocMovies(mapOf("sort_by" to "vote_average.desc", "vote_count.gte" to "50", "page" to page.toString())) },
+                        { kidsDocTv(mapOf("sort_by" to "vote_average.desc", "vote_count.gte" to "20", "page" to page.toString()), genres = "99,10751") },
+                    )
+                },
+            )
         }
     }
 
@@ -974,6 +1082,8 @@ class CatalogRepositoryImpl @Inject constructor(
 
     private companion object {
         val KIDS_GENRES = setOf(16, 10751, 10762)
+        const val KIDS_DOC_EXCLUDED_MOVIE_GENRES = "80,27,53,10752"
+        const val KIDS_DOC_EXCLUDED_TV_GENRES = "80,27,53,10768"
         const val MIN_RECOMMENDATIONS = 10
         const val MAX_RECOMMENDATIONS = 20
         const val RECOMMENDATIONS_CACHE_MS = 6 * 60 * 60 * 1000L

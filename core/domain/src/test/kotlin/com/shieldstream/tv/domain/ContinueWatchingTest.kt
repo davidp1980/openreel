@@ -33,6 +33,7 @@ class ContinueWatchingTest {
 
         assertEquals(listOf("movie:movie"), ContinueWatching.entries(progress, HomeFilter.MOVIES).map { it.key })
         assertEquals(listOf("tv:show:1:2"), ContinueWatching.entries(progress, HomeFilter.TV).map { it.key })
+        assertTrue(ContinueWatching.entries(progress, HomeFilter.DOCUMENTARIES).isEmpty())
     }
 
     @Test

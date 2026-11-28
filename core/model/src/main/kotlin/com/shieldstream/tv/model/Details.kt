@@ -48,7 +48,7 @@ data class Episode(
     val airDate: String? = null,
 )
 
-enum class HomeFilter { ALL, MOVIES, TV }
+enum class HomeFilter { ALL, MOVIES, TV, DOCUMENTARIES }
 
 enum class RowStyle { POSTER, TOP10, CONTINUE, NEW_EPISODES, UP_NEXT, MY_LIST }
 

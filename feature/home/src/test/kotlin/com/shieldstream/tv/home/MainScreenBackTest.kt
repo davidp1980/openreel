@@ -13,9 +13,13 @@ class MainScreenBackTest {
         val kidsTabs = availableNavTabs(kidsProfile = true)
         assertFalse(NavTab.CALENDAR in kidsTabs)
         assertFalse(NavTab.LIVE in kidsTabs)
+        assertTrue(NavTab.DOCUMENTARIES in kidsTabs)
+        assertTrue(NavTab.DOCUMENTARIES in availableNavTabs(kidsProfile = false))
         assertEquals(NavTab.entries, availableNavTabs(kidsProfile = false))
         assertEquals(NavTab.HOME, visibleNavTab(NavTab.CALENDAR, kidsProfile = true))
         assertEquals(NavTab.HOME, visibleNavTab(NavTab.LIVE, kidsProfile = true))
+        assertEquals(NavTab.DOCUMENTARIES, visibleNavTab(NavTab.DOCUMENTARIES, kidsProfile = true))
+        assertEquals(NavTab.DOCUMENTARIES, visibleNavTab(NavTab.DOCUMENTARIES, kidsProfile = false))
         assertEquals(NavTab.CALENDAR, visibleNavTab(NavTab.CALENDAR, kidsProfile = false))
         assertEquals(NavTab.LIVE, visibleNavTab(NavTab.LIVE, kidsProfile = false))
     }

@@ -36,6 +36,16 @@
     <string name="data_kids_shows">Kids shows</string>
     <string name="data_cartoons">Cartoons</string>
     <string name="data_more_shows">More shows</string>
+    <string name="data_top_10_documentaries">Top 10 documentaries</string>
+    <string name="data_documentary_movies">Documentary movies</string>
+    <string name="data_docuseries">Docuseries</string>
+    <string name="data_history_society">History &amp; society</string>
+    <string name="data_music_culture">Music &amp; culture</string>
+    <string name="data_recent_documentaries">Recent documentaries</string>
+    <string name="data_kids_documentaries">Kids documentaries</string>
+    <string name="data_family_documentaries">Family documentaries</string>
+    <string name="data_kids_docuseries">Kids docuseries</string>
+    <string name="data_all_ages_documentaries">All-ages documentaries</string>
     <string name="data_pick_an_episode">Pick an episode</string>
     <string name="data_not_responding_right_now">Not responding right now</string>
     <string name="data_no_sources_for_this">No sources for this</string>

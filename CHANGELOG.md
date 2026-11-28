@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.55] - 2026-11-28
+
+### Added
+
+- **Documentaries section (`NavTab.DOCUMENTARIES`, `HomeFilter.DOCUMENTARIES`):** added a dedicated *Documentaries* (*Documentales*) top-bar section for both adult and kids profiles, with its own featured billboard and curated rows (Top 10, documentary movies, docuseries, true crime, history & society, music & culture, recent, acclaimed, plus age-filtered kids and family documentary rows).
+
 ## [1.0.54] - 2026-11-28
 
 ### Improved

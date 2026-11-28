@@ -13,5 +13,7 @@ class CategoryTest {
         assertTrue(Category.CLASSICS in Category.forFilter(HomeFilter.ALL))
         assertTrue(Category.CLASSICS in Category.forFilter(HomeFilter.MOVIES))
         assertFalse(Category.CLASSICS in Category.forFilter(HomeFilter.TV))
+        assertTrue(Category.DOCUMENTARY in Category.forFilter(HomeFilter.DOCUMENTARIES))
+        assertFalse(Category.COMEDY in Category.forFilter(HomeFilter.DOCUMENTARIES))
     }
 }

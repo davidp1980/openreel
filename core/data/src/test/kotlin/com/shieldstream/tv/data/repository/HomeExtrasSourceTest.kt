@@ -12,6 +12,7 @@ import com.shieldstream.tv.network.dto.TmdbMovieDto
 import com.shieldstream.tv.network.dto.TmdbPaginated
 import com.shieldstream.tv.network.dto.TmdbSearchResultDto
 import com.shieldstream.tv.network.dto.TmdbTvDetailDto
+import com.shieldstream.tv.network.dto.TmdbTvDto
 import com.shieldstream.tv.strings.Texts
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -116,5 +117,66 @@ class HomeExtrasSourceTest {
         val moviesIds = moviesFeatured.map { it.item.id }.toSet()
         assertEquals(setOf("100"), homeMovieIds)
         assertEquals(setOf("101", "102", "103"), moviesIds)
+    }
+
+    @Test
+    fun `documentaries featured billboard queries genre 99 for adults and enforces kids safety filters for kids`() = runTest {
+        val tmdb = mockk<TmdbApi>()
+        val store = mockk<TokenStore> { every { tmdbKey } returns "tmdb-key" }
+        val movieQueries = mutableListOf<Map<String, String>>()
+        val tvQueries = mutableListOf<Map<String, String>>()
+
+        coEvery { tmdb.discoverMovieQuery("tmdb-key", capture(movieQueries)) } returns TmdbPaginated(
+            results = listOf(
+                TmdbMovieDto(id = 301, title = "Doc Movie 1", poster_path = "/p301.jpg", backdrop_path = "/b301.jpg"),
+                TmdbMovieDto(id = 302, title = "Doc Movie 2", poster_path = "/p302.jpg", backdrop_path = "/b302.jpg"),
+            ),
+        )
+        coEvery { tmdb.discoverTvQuery("tmdb-key", capture(tvQueries)) } returns TmdbPaginated(
+            results = listOf(
+                TmdbTvDto(id = 401, name = "Doc Series 1", poster_path = "/p401.jpg", backdrop_path = "/b401.jpg"),
+                TmdbTvDto(id = 402, name = "Doc Series 2", poster_path = "/p402.jpg", backdrop_path = "/b402.jpg"),
+            ),
+        )
+        coEvery { tmdb.movieDetails(any(), any(), any(), any()) } answers {
+            val id = firstArg<Int>()
+            TmdbMovieDetailDto(id = id, title = "Movie $id", poster_path = "/p$id.jpg", backdrop_path = "/b$id.jpg")
+        }
+        coEvery { tmdb.tvDetails(any(), any(), any(), any()) } answers {
+            val id = firstArg<Int>()
+            TmdbTvDetailDto(id = id, name = "Show $id", poster_path = "/p$id.jpg", backdrop_path = "/b$id.jpg")
+        }
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val source = HomeExtrasSource(tmdb, context, store, mockk<Texts>(relaxed = true))
+
+        val adultFeatured = source.featured(HomeFilter.DOCUMENTARIES)
+        assertEquals(setOf("301", "401", "302"), adultFeatured.map { it.item.id }.toSet())
+        val adultMovieQueries = movieQueries.toList()
+        val adultTvQueries = tvQueries.toList()
+        assertEquals(2, adultMovieQueries.size)
+        assertEquals(2, adultTvQueries.size)
+        adultMovieQueries.forEach { assertEquals("99", it["with_genres"]) }
+        adultTvQueries.forEach { assertEquals("99", it["with_genres"]) }
+
+        movieQueries.clear()
+        tvQueries.clear()
+
+        val kidsFeatured = source.kidsFeatured(HomeFilter.DOCUMENTARIES)
+        assertEquals(setOf("301", "401", "302"), kidsFeatured.map { it.item.id }.toSet())
+        assertEquals(2, movieQueries.size)
+        assertEquals(1, tvQueries.size)
+        movieQueries.forEach { query ->
+            assertEquals("99", query["with_genres"])
+            assertEquals("80,27,53,10752", query["without_genres"])
+            assertEquals("PG", query["certification.lte"])
+            assertEquals("US", query["certification_country"])
+            assertEquals("false", query["include_adult"])
+        }
+        tvQueries.forEach { query ->
+            assertEquals("99,10751", query["with_genres"])
+            assertEquals("80,27,53,10768", query["without_genres"])
+            assertEquals("false", query["include_adult"])
+        }
     }
 }

@@ -218,6 +218,7 @@ class HomeViewModel @Inject constructor(
                         HomeFilter.ALL -> true
                         HomeFilter.MOVIES -> it.type == MediaType.MOVIE
                         HomeFilter.TV -> it.type == MediaType.TV
+                        HomeFilter.DOCUMENTARIES -> false
                     }
                 }.take(rowQuery.maxItems)
             }
@@ -493,6 +494,7 @@ class HomeViewModel @Inject constructor(
             HomeFilter.ALL -> true
             HomeFilter.MOVIES -> type == MediaType.MOVIE
             HomeFilter.TV -> type == MediaType.TV
+            HomeFilter.DOCUMENTARIES -> false
         }
         val progressEntries = progress.entries
             .mapNotNull { (key, value) ->
@@ -566,6 +568,7 @@ class HomeViewModel @Inject constructor(
         when (query.filter) {
             HomeFilter.MOVIES -> load(MediaType.MOVIE).map { MediaType.MOVIE to it }
             HomeFilter.TV -> load(MediaType.TV).map { MediaType.TV to it }
+            HomeFilter.DOCUMENTARIES -> emptyList()
             HomeFilter.ALL -> {
                 val movies = async { load(MediaType.MOVIE).map { MediaType.MOVIE to it } }
                 val shows = async { load(MediaType.TV).map { MediaType.TV to it } }
@@ -624,7 +627,7 @@ class HomeViewModel @Inject constructor(
         prefetchJob = viewModelScope.launch {
             delay(1_500)
             val limit = settings.homeRowItemLimit.first()
-            for (other in listOf(HomeFilter.TV, HomeFilter.MOVIES)) {
+            for (other in listOf(HomeFilter.TV, HomeFilter.MOVIES, HomeFilter.DOCUMENTARIES)) {
                 coroutineScope {
                     launch { runCatching { catalogRepository.getFeatured(other) } }
                     runCatching { catalogRepository.getHome(other, limit) }

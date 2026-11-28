@@ -88,6 +88,7 @@
     <string name="common_tv_shows">Series</string>
     <string name="common_live_tv">Directo</string>
     <string name="common_movies">Películas</string>
+    <string name="common_documentaries">Documentales</string>
     <string name="common_settings">Ajustes</string>
     <string name="common_my_list">Mi lista</string>
     <string name="common_switch_profile">Cambiar perfil</string>

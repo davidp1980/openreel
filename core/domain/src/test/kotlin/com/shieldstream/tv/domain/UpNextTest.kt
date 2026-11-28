@@ -28,6 +28,7 @@ class UpNextTest {
             UpNext.candidates(progress, HomeFilter.TV).map { it.showId to it.episode },
         )
         assertEquals(emptyList<UpNextCandidate>(), UpNext.candidates(progress, HomeFilter.MOVIES))
+        assertEquals(emptyList<UpNextCandidate>(), UpNext.candidates(progress, HomeFilter.DOCUMENTARIES))
         assertEquals(
             listOf("newer"),
             UpNext.candidates(progress, HomeFilter.TV, maxItems = 1).map { it.showId },

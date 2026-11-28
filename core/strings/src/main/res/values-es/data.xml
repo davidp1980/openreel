@@ -36,6 +36,16 @@
     <string name="data_kids_shows">Series infantiles</string>
     <string name="data_cartoons">Dibujos animados</string>
     <string name="data_more_shows">Más series</string>
+    <string name="data_top_10_documentaries">Top 10 documentales</string>
+    <string name="data_documentary_movies">Películas documentales</string>
+    <string name="data_docuseries">Docuseries</string>
+    <string name="data_history_society">Historia y sociedad</string>
+    <string name="data_music_culture">Música y cultura</string>
+    <string name="data_recent_documentaries">Documentales recientes</string>
+    <string name="data_kids_documentaries">Documentales infantiles</string>
+    <string name="data_family_documentaries">Documentales en familia</string>
+    <string name="data_kids_docuseries">Docuseries infantiles</string>
+    <string name="data_all_ages_documentaries">Para todos los públicos</string>
     <string name="data_pick_an_episode">Elige un episodio</string>
     <string name="data_not_responding_right_now">No responde ahora mismo</string>
     <string name="data_no_sources_for_this">Sin fuentes para esto</string>
