@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.54] - 2026-11-28
+
+### Improved
+
+- **Episode Center candidate filtering (`NewEpisodes`):** require either a watched episode or at least 30 seconds of watch progress (`WatchProgress.MIN_RESUME_MS`) before adding a show from history to Episode Center, preventing brief failed-stream or test plays from polluting the list.
+- **Source picker marquee (`DetailsScreen`):** scroll long release names with `basicMarquee` while a source row is focused instead of truncating them with an ellipsis.
+
 ## [1.0.53] - 2026-11-23
 
 ### Changed

@@ -39,6 +39,20 @@ class NewEpisodesTest {
     }
 
     @Test
+    fun `brief watch progress below resume threshold is ignored unless watched`() {
+        val progress = mapOf(
+            WatchProgress.episodeKey("10", 1, 1) to WatchProgress(positionMs = 15_000L, durationMs = 15_000L, updatedAt = 300),
+            WatchProgress.episodeKey("20", 1, 1) to WatchProgress(positionMs = WatchProgress.MIN_RESUME_MS, durationMs = 3_600_000L, updatedAt = 200),
+            WatchProgress.episodeKey("30", 1, 1) to WatchProgress(positionMs = 5_000L, durationMs = 3_600_000L, updatedAt = 400),
+        )
+
+        assertEquals(
+            listOf("10", "20"),
+            NewEpisodes.candidateIds(progress, emptyList(), HomeFilter.ALL),
+        )
+    }
+
+    @Test
     fun `recent unaired and watched episodes are distinguished`() {
         val latest = episode(airDate = "2026-06-15")
 

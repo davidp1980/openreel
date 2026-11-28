@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1541,7 +1542,12 @@ private fun SourceRow(source: StreamSource, blocked: Boolean, onClick: () -> Uni
                 color = sub,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = if (focused) TextOverflow.Clip else TextOverflow.Ellipsis,
+                modifier = if (focused) {
+                    Modifier.basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 700, repeatDelayMillis = 1500)
+                } else {
+                    Modifier
+                },
             )
         }
         if (source.provider.isNotBlank()) {
