@@ -151,7 +151,7 @@ class HomeExtrasSourceTest {
         val source = HomeExtrasSource(tmdb, context, store, mockk<Texts>(relaxed = true))
 
         val adultFeatured = source.featured(HomeFilter.DOCUMENTARIES)
-        assertEquals(setOf("301", "401", "302"), adultFeatured.map { it.item.id }.toSet())
+        assertEquals(setOf("301", "401", "302", "402"), adultFeatured.map { it.item.id }.toSet())
         val adultMovieQueries = movieQueries.toList()
         val adultTvQueries = tvQueries.toList()
         assertEquals(2, adultMovieQueries.size)
@@ -163,7 +163,7 @@ class HomeExtrasSourceTest {
         tvQueries.clear()
 
         val kidsFeatured = source.kidsFeatured(HomeFilter.DOCUMENTARIES)
-        assertEquals(setOf("301", "401", "302"), kidsFeatured.map { it.item.id }.toSet())
+        assertEquals(setOf("301", "401", "302", "402"), kidsFeatured.map { it.item.id }.toSet())
         assertEquals(2, movieQueries.size)
         assertEquals(1, tvQueries.size)
         movieQueries.forEach { query ->
